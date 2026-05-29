@@ -1,0 +1,13 @@
+Business name: Azan Clothing
+Hours: 9am - 6pm Monday to Friday
+Location: Karachi, Pakistan
+Products: Shirts, Pants, Shoes
+Delivery: 2-3 business days
+Contact: 03001234567
+Returns: Within 7 days with receipt
+
+Q: What is your return policy?
+A: We accept returns within 7 days with receipt.
+
+Q: Do you deliver?
+A: Yes, we deliver in 2-3 business days across Pakistan.
