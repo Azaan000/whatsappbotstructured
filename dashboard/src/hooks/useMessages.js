@@ -43,10 +43,22 @@ export function useMessages(selectedPhone) {
   }, []);
 
   const updateMessageStatus = useCallback((waId, status) => {
+    if (!waId) return;
     setMessages((prev) =>
-      prev.map((m) =>
-        m.whatsapp_message_id === waId ? { ...m, status } : m
-      )
+      prev.map((m) => {
+        // Match by whatsapp_message_id if available
+        if (m.whatsapp_message_id && m.whatsapp_message_id === waId) {
+          return { ...m, status };
+        }
+        return m;
+      })
+    );
+  }, []);
+
+  // Update status of optimistic (temp) message by _id after API confirms
+  const updateTempStatus = useCallback((tempId, status) => {
+    setMessages((prev) =>
+      prev.map((m) => (m._id === tempId ? { ...m, status } : m))
     );
   }, []);
 
@@ -65,6 +77,7 @@ export function useMessages(selectedPhone) {
     incrementUnread,
     appendMessage,
     updateMessageStatus,
+    updateTempStatus,
     removeMessage,
     selectedPhoneRef,
   };

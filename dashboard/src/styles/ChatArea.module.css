@@ -1,4 +1,3 @@
-/* ChatArea.module.css */
 .chat { flex: 1; display: flex; flex-direction: column; background: #f0f2f5; overflow: hidden; }
 
 .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: #888; }
@@ -26,11 +25,36 @@
 .bubble { padding: 8px 12px; border-radius: 12px; max-width: 60%; font-size: 14px; word-wrap: break-word; box-shadow: 0 1px 1px rgba(0,0,0,0.08); }
 .bubbleUser { align-self: flex-start; background: #e4e6eb; color: #000; }
 .bubbleBot  { align-self: flex-end;   background: #0b5cff; color: #fff; }
-.typingBubble { opacity: 0.65; font-style: italic; }
 .bubbleBody { display: flex; gap: 6px; align-items: flex-start; flex-wrap: wrap; }
 .typeIcon { flex-shrink: 0; }
 .fileName { font-size: 11px; opacity: 0.75; font-style: italic; }
 .bubbleMeta { font-size: 10px; margin-top: 4px; opacity: 0.7; text-align: right; }
+
+/* Typing bubble — left side like incoming message */
+.typingBubbleWrap {
+  align-self: flex-start;
+  background: #e4e6eb;
+  border-radius: 18px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: 0 1px 1px rgba(0,0,0,0.08);
+  max-width: 80px;
+}
+.typingDots { display: flex; align-items: center; gap: 4px; }
+.dot {
+  width: 8px;
+  height: 8px;
+  background: #999;
+  border-radius: 50%;
+  animation: typingBounce 1s infinite ease-in-out;
+}
+
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30%            { transform: translateY(-6px); opacity: 1; }
+}
 
 .inputArea { display: flex; padding: 12px 20px; background: #fff; border-top: 1px solid #ddd; gap: 8px; align-items: center; flex-wrap: wrap; flex-shrink: 0; }
 .fileInput { padding: 4px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; }

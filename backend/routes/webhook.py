@@ -1,4 +1,6 @@
 import os
+import hmac
+import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from flask import Blueprint, request, current_app
 
@@ -37,6 +39,20 @@ def _already_processed(msg_id):
         conn.close()
 
 
+def _verify_signature(payload: bytes, signature: str) -> bool:
+    """Verify the request actually came from Meta."""
+    app_secret = os.getenv("META_APP_SECRET")
+    if not app_secret:
+        return True  # Skip verification if secret not configured
+    try:
+        expected = "sha256=" + hmac.new(
+            app_secret.encode(), payload, hashlib.sha256
+        ).hexdigest()
+        return hmac.compare_digest(signature, expected)
+    except Exception:
+        return False
+
+
 @webhook_bp.route("/webhook", methods=["GET"])
 def verify():
     verify_token = os.getenv("VERIFY_TOKEN")
@@ -49,6 +65,12 @@ def verify():
 
 @webhook_bp.route("/webhook", methods=["POST"])
 def webhook():
+    # Verify signature
+    signature = request.headers.get("X-Hub-Signature-256", "")
+    if not _verify_signature(request.data, signature):
+        print("Invalid webhook signature — request rejected")
+        return "Forbidden", 403
+
     data = request.get_json()
     socketio = _get_socketio()
 
@@ -81,6 +103,10 @@ def webhook():
                     if msg_id:
                         _processed_ids.add(msg_id)
 
+                    # Cap processed_ids set size to prevent memory growth
+                    if len(_processed_ids) > 10000:
+                        _processed_ids.clear()
+
                     phone = msg["from"]
                     name = contacts.get(phone, "")
                     _handle_message(msg, socketio, name=name)
@@ -100,6 +126,10 @@ def _handle_message(msg, socketio, name=""):
 
     if msg_type == "text":
         text = msg["text"]["body"]
+
+        # Emit typing indicator to dashboard
+        socketio.emit("user_typing", {"phone": phone, "typing": True})
+
         save_message(phone, text, "user", socketio,
                      status="delivered", whatsapp_message_id=msg_id)
 

@@ -1,14 +1,24 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import io from "socket.io-client";
 import { BASE } from "../api/client";
 
-export function useSocket({ onNewUser, onUserUpdate, onNewMessage, onStatusUpdate, onModeChanged, onUserUpdated }) {
+export function useSocket({
+  onNewUser,
+  onUserUpdate,
+  onNewMessage,
+  onStatusUpdate,
+  onModeChanged,
+  onUserUpdated,
+  onUserTyping,
+}) {
   const socketRef = useRef(null);
   const [connected, setConnected] = useState(false);
 
-  // Stable refs so socket listeners always see current callbacks
   const cbRefs = useRef({});
-  cbRefs.current = { onNewUser, onUserUpdate, onNewMessage, onStatusUpdate, onModeChanged, onUserUpdated };
+  cbRefs.current = {
+    onNewUser, onUserUpdate, onNewMessage,
+    onStatusUpdate, onModeChanged, onUserUpdated, onUserTyping,
+  };
 
   useEffect(() => {
     const socket = io(BASE, {
@@ -26,9 +36,10 @@ export function useSocket({ onNewUser, onUserUpdate, onNewMessage, onStatusUpdat
     socket.on("status_update", (d) => cbRefs.current.onStatusUpdate?.(d));
     socket.on("mode_changed", (d) => cbRefs.current.onModeChanged?.(d));
     socket.on("user_updated", (d) => cbRefs.current.onUserUpdated?.(d));
+    socket.on("user_typing", (d) => cbRefs.current.onUserTyping?.(d));
 
     return () => socket.disconnect();
-  }, []); // run once — stable refs handle latest callbacks
+  }, []);
 
-  return { connected };
+  return { connected, socketRef };
 }

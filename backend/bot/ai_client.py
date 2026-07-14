@@ -2,7 +2,7 @@ import os
 import requests
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-AI_MODEL = os.getenv("AI_MODEL", "openrouter/free")
+AI_MODEL = os.getenv("AI_MODEL", "meta-llama/llama-3-8b-instruct:free")
 
 _knowledge_cache = None
 
@@ -50,52 +50,84 @@ def get_relevant_knowledge(msg: str) -> str:
     return "\n".join(matched)[:800]
 
 
-def ask_ai(user_message: str) -> str:
+def ask_ai(user_message: str, retries: int = 1) -> str:
     if not OPENROUTER_API_KEY:
         return "AI service is not configured. Please contact support."
 
-    try:
-        context = get_relevant_knowledge(user_message)
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-        }
-        system_prompt = f"""You are a WhatsApp business assistant.
+    context = get_relevant_knowledge(user_message)
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    system_prompt = f"""You are a WhatsApp business assistant.
 RULES:
 - Reply in 1-2 short sentences
 - Friendly and natural tone
 - Clear and direct
 - No long paragraphs
 - If asked something outside the knowledge base, say you don't know
+- Do NOT add any safety ratings, classifications, or metadata to your reply
+- Do NOT include phrases like "User Safety:", "Content:", "Safe:", or any labels
 
 KNOWLEDGE:
 {context}"""
 
-        payload = {
-            "model": AI_MODEL,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message},
-            ],
-        }
+    payload = {
+        "model": AI_MODEL,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ],
+    }
 
-        res = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=15,
-        )
-        data = res.json()
+    for attempt in range(retries + 1):
+        try:
+            res = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=15,
+            )
+            data = res.json()
 
-        if "choices" in data:
-            return data["choices"][0]["message"]["content"]
+            if "choices" in data:
+                reply = data["choices"][0]["message"]["content"]
+                return _clean_reply(reply)
 
-        print(f"AI unexpected response: {data}")
-        return "Sorry, I'm having trouble right now. Please try again."
+            print(f"AI unexpected response: {data}")
+            return "Sorry, I'm having trouble right now. Please try again."
 
-    except requests.Timeout:
-        print("AI request timed out")
-        return "Server is busy. Please try again in a moment."
-    except Exception as e:
-        print(f"ask_ai error: {e}")
-        return "Server error. Please try again."
+        except requests.Timeout:
+            print(f"AI timeout (attempt {attempt + 1})")
+            if attempt < retries:
+                continue
+            return "Server is busy. Please try again in a moment."
+        except Exception as e:
+            print(f"ask_ai error (attempt {attempt + 1}): {e}")
+            if attempt < retries:
+                continue
+            return "Server error. Please try again."
+
+    return "Server error. Please try again."
+
+
+def _clean_reply(text: str) -> str:
+    """Remove metadata lines that some models append to responses."""
+    lines = text.strip().split("\n")
+    clean_lines = []
+    skip_prefixes = (
+        "user safety:",
+        "content safety:",
+        "safe:",
+        "unsafe:",
+        "safety:",
+        "classification:",
+        "content:",
+        "note:",
+        "disclaimer:",
+    )
+    for line in lines:
+        if line.strip().lower().startswith(skip_prefixes):
+            continue
+        clean_lines.append(line)
+    return "\n".join(clean_lines).strip()

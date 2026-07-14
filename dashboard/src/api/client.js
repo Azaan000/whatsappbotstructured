@@ -60,12 +60,13 @@ export const api = {
   getAnalytics: () => request("/analytics"),
 
   exportCsv: (phone = null) => {
-    const url = `${BASE}/export/csv${phone ? `?phone=${phone}` : ""}`;
-    window.open(url, "_blank");
+    const params = new URLSearchParams({ token: SECRET });
+    if (phone) params.append("phone", phone);
+    window.open(`${BASE}/export/csv?${params.toString()}`, "_blank");
   },
 
   reloadKnowledge: () =>
     request("/reload-knowledge", { method: "POST" }),
 };
 
-export { BASE };
+export { BASE, SECRET };

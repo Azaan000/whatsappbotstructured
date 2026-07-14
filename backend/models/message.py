@@ -102,19 +102,21 @@ def get_messages(phone, search=""):
         if search:
             cursor.execute(
                 """SELECT message, direction, status, timestamp,
-                          message_type, media_path, file_name
+                          message_type, media_path, file_name, whatsapp_message_id
                    FROM messages WHERE phone=? AND message LIKE ?
-                   ORDER BY id ASC""",
+                   ORDER BY id DESC LIMIT 100""",
                 (phone, f"%{search}%"),
             )
         else:
             cursor.execute(
                 """SELECT message, direction, status, timestamp,
-                          message_type, media_path, file_name
-                   FROM messages WHERE phone=? ORDER BY id ASC""",
+                          message_type, media_path, file_name, whatsapp_message_id
+                   FROM messages WHERE phone=? ORDER BY id DESC LIMIT 100""",
                 (phone,),
             )
         rows = cursor.fetchall()
+        # Reverse so oldest is at top, newest at bottom
+        rows = list(reversed(rows))
         return [
             {
                 "message": r["message"] or "",
@@ -124,6 +126,7 @@ def get_messages(phone, search=""):
                 "message_type": r["message_type"] or "text",
                 "media_path": r["media_path"],
                 "file_name": r["file_name"],
+                "whatsapp_message_id": r["whatsapp_message_id"],
             }
             for r in rows
         ]

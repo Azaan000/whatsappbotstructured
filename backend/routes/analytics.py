@@ -1,3 +1,4 @@
+import time
 from datetime import datetime
 from flask import Blueprint, jsonify
 from models.database import get_db
@@ -5,10 +6,20 @@ from utils.auth import require_auth
 
 analytics_bp = Blueprint("analytics", __name__)
 
+_analytics_cache = {}
+_cache_time = 0
+CACHE_TTL = 30  # seconds
+
 
 @analytics_bp.route("/analytics", methods=["GET"])
 @require_auth
 def get_analytics():
+    global _analytics_cache, _cache_time
+
+    # Return cached result if fresh
+    if time.time() - _cache_time < CACHE_TTL and _analytics_cache:
+        return jsonify(_analytics_cache)
+
     conn = get_db()
     c = conn.cursor()
     try:
@@ -73,7 +84,7 @@ def get_analytics():
         """)
         daily_activity = [{"date": r[0], "messages": r[1]} for r in c.fetchall()]
 
-        return jsonify({
+        result = {
             "total_users": total_users,
             "total_messages": total_messages,
             "ai_users": ai_users,
@@ -84,7 +95,14 @@ def get_analytics():
             "top_users": top_users,
             "top_questions": top_questions,
             "daily_activity": daily_activity,
-        })
+        }
+
+        # Store in cache
+        _analytics_cache = result
+        _cache_time = time.time()
+
+        return jsonify(result)
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
@@ -96,4 +114,7 @@ def get_analytics():
 def reload_knowledge():
     from bot.ai_client import reload_knowledge as _reload
     knowledge = _reload()
+    # Invalidate analytics cache too
+    global _cache_time
+    _cache_time = 0
     return jsonify({"success": True, "length": len(knowledge)})

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import "./styles/global.css";
 
 import { api } from "./api/client";
@@ -18,6 +18,8 @@ export default function App() {
   const [stats, setStats] = useState({});
   const [sending, setSending] = useState(false);
   const [typing, setTyping] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const typingTimerRef = useRef(null);
 
   const [showBroadcast, setShowBroadcast] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
@@ -34,6 +36,7 @@ export default function App() {
     incrementUnread,
     appendMessage,
     updateMessageStatus,
+    updateTempStatus,
     removeMessage,
     selectedPhoneRef,
   } = useMessages(selectedPhone);
@@ -75,14 +78,14 @@ export default function App() {
     }
 
     if (selectedPhoneRef.current === data.phone) {
-      // Only show typing for AI replies
+      setTyping(false);
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+
       if (data.direction === "bot" && data.source === "ai") {
         setTyping(true);
-        setTimeout(() => setTyping(false), 1200);
+        typingTimerRef.current = setTimeout(() => setTyping(false), 1200);
       }
 
-      // Only append user messages and AI replies
-      // Dashboard sends are added optimistically so skip them
       if (data.direction === "user" || data.source === "ai") {
         appendMessage({
           message: data.message,
@@ -132,6 +135,14 @@ export default function App() {
     }
   }, [selectedPhoneRef]);
 
+  const handleUserTyping = useCallback((data) => {
+    if (selectedPhoneRef.current === data.phone && data.typing) {
+      setTyping(true);
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = setTimeout(() => setTyping(false), 3000);
+    }
+  }, [selectedPhoneRef]);
+
   const { connected } = useSocket({
     onNewUser: handleNewUser,
     onUserUpdate: handleUserUpdate,
@@ -139,6 +150,7 @@ export default function App() {
     onStatusUpdate: handleStatusUpdate,
     onModeChanged: handleModeChanged,
     onUserUpdated: handleUserUpdated,
+    onUserTyping: handleUserTyping,
   });
 
   // ── Initial load ─────────────────────────────────────────────────────────
@@ -152,14 +164,15 @@ export default function App() {
         ]);
         setUsers(usersData);
         setStats(statsData);
+        setLoadError(false);
       } catch (e) {
         console.error("Initial load failed:", e);
+        setLoadError(true);
       }
     };
     load();
   }, []);
 
-  // Poll analytics every 30s
   useEffect(() => {
     const id = setInterval(async () => {
       try {
@@ -177,6 +190,8 @@ export default function App() {
     setSelectedUser(user);
     loadMessages(user.phone);
     markAsRead(user.phone);
+    setTyping(false);
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
   }, [loadMessages, markAsRead]);
 
   // ── Send actions ─────────────────────────────────────────────────────────
@@ -197,16 +212,14 @@ export default function App() {
 
     try {
       await api.sendMessage(selectedPhone, text);
-      setMessages((prev) =>
-        prev.map((m) => (m._id === temp._id ? { ...m, status: "sent" } : m))
-      );
+      updateTempStatus(temp._id, "sent");
     } catch {
       removeMessage(temp);
       alert("Failed to send message.");
     } finally {
       setSending(false);
     }
-  }, [selectedPhone, sending, appendMessage, removeMessage, setMessages]);
+  }, [selectedPhone, sending, appendMessage, removeMessage, updateTempStatus]);
 
   const handleSendFile = useCallback(async (file) => {
     if (!selectedPhone || sending) return;
@@ -225,16 +238,14 @@ export default function App() {
 
     try {
       await api.sendFile(selectedPhone, file);
-      setMessages((prev) =>
-        prev.map((m) => (m._id === temp._id ? { ...m, status: "sent" } : m))
-      );
+      updateTempStatus(temp._id, "sent");
     } catch {
       removeMessage(temp);
       alert("Failed to send file.");
     } finally {
       setSending(false);
     }
-  }, [selectedPhone, sending, appendMessage, removeMessage, setMessages]);
+  }, [selectedPhone, sending, appendMessage, removeMessage, updateTempStatus]);
 
   // ── Toggle / edit ────────────────────────────────────────────────────────
 
@@ -268,6 +279,28 @@ export default function App() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+
+      {/* Server error banner */}
+      {loadError && (
+        <div style={{
+          background: "#f44336", color: "#fff",
+          padding: "8px 20px", fontSize: 13, textAlign: "center",
+          flexShrink: 0,
+        }}>
+          Cannot connect to server. Make sure Flask is running on port 5000.
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              marginLeft: 12, padding: "2px 10px",
+              background: "#fff", color: "#f44336",
+              border: "none", borderRadius: 4, cursor: "pointer",
+              fontSize: 12, fontWeight: 600,
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Top bar */}
       <div style={barStyle}>

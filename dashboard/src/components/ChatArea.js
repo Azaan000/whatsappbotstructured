@@ -5,13 +5,33 @@ function statusIcon(status) {
   return { sent: "✓", delivered: "✓✓", read: "✓✓✓", sending: "⋯", failed: "⚠" }[status] || "";
 }
 function statusColor(status) {
-  return { read: "#FFFFFF", delivered: "#FFFFFF", sent: "#666" }[status] || "#999";
+  return {
+    read: "#ffffff",
+    delivered: "#c8e6ff",
+    sent: "#a0c4ff",
+    failed: "#ff6b6b",
+  }[status] || "#a0c4ff";
 }
 function typeIcon(type) {
   return { image: "🖼", audio: "🎵", document: "📄", video: "🎬", file: "📎" }[type] || "💬";
 }
 
-export default function ChatArea({ user, messages, loading, typing, sending, onSend, onSendFile, onToggleMode, onEdit, onExport }) {
+function TypingBubble() {
+  return (
+    <div className={s.typingBubbleWrap}>
+      <div className={s.typingDots}>
+        <span className={s.dot} style={{ animationDelay: "0ms" }} />
+        <span className={s.dot} style={{ animationDelay: "150ms" }} />
+        <span className={s.dot} style={{ animationDelay: "300ms" }} />
+      </div>
+    </div>
+  );
+}
+
+export default function ChatArea({
+  user, messages, loading, typing, sending,
+  onSend, onSendFile, onToggleMode, onEdit, onExport
+}) {
   const [text, setText] = useState("");
   const [search, setSearch] = useState("");
   const [file, setFile] = useState(null);
@@ -100,7 +120,7 @@ export default function ChatArea({ user, messages, loading, typing, sending, onS
         )}
         {filtered.map((msg, i) => (
           <div
-            key={msg.id || i}
+            key={msg._id || msg.whatsapp_message_id || i}
             className={`${s.bubble} ${msg.direction === "user" ? s.bubbleUser : s.bubbleBot}`}
           >
             <div className={s.bubbleBody}>
@@ -111,18 +131,17 @@ export default function ChatArea({ user, messages, loading, typing, sending, onS
             <div className={s.bubbleMeta}>
               {msg.timestamp && new Date(msg.timestamp).toLocaleTimeString()}
               {msg.direction === "bot" && (
-                <span style={{ marginLeft: 4, color: statusColor(msg.status) }}>
+                <span style={{ marginLeft: 4, color: statusColor(msg.status), fontSize: 12, fontWeight: "bold" }}>
                   {statusIcon(msg.status)}
                 </span>
               )}
             </div>
           </div>
         ))}
-        {typing && (
-          <div className={`${s.bubble} ${s.bubbleBot} ${s.typingBubble}`}>
-            typing...
-          </div>
-        )}
+
+        {/* Typing bubble — shown on left side like incoming message */}
+        {typing && <TypingBubble />}
+
         <div ref={endRef} />
       </div>
 

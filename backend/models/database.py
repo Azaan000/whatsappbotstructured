@@ -1,12 +1,12 @@
 import sqlite3
 from datetime import datetime
 
-
 DB_PATH = "database.db"
 
 
 def get_db():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=10)
+    conn.execute("PRAGMA journal_mode=WAL")  # allows concurrent reads/writes
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -28,7 +28,6 @@ def init_db():
         )
     """)
 
-    # Add name column if upgrading from old database
     try:
         cursor.execute("ALTER TABLE users ADD COLUMN name TEXT DEFAULT ''")
     except:
@@ -49,11 +48,28 @@ def init_db():
         )
     """)
 
+    # Indexes for fast lookups
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_messages_phone
+        ON messages (phone)
+    """)
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_messages_phone_dir
         ON messages (phone, direction, id)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_messages_wa_id
+        ON messages (whatsapp_message_id)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_users_last_seen
+        ON users (last_seen DESC)
     """)
 
     conn.commit()
     conn.close()
     print("Database ready")
+
+
+# Run on import — ensures tables exist before any route touches the DB
+init_db()
