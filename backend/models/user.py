@@ -3,6 +3,7 @@ from models.database import get_db
 
 
 def save_user(phone, socketio, name=""):
+    """Insert user if new; always update last_seen. Returns True if new user."""
     conn = get_db()
     cursor = conn.cursor()
     try:
@@ -14,7 +15,6 @@ def save_user(phone, socketio, name=""):
             "INSERT OR IGNORE INTO users (phone, name, first_seen, last_seen) VALUES (?, ?, ?, ?)",
             (phone, name, now, now),
         )
-        # Update name if provided
         if name:
             cursor.execute(
                 "UPDATE users SET last_seen=?, name=? WHERE phone=?",
@@ -37,8 +37,11 @@ def save_user(phone, socketio, name=""):
             })
             print(f"New user: {name or phone} ({phone})")
 
+        return is_new
+
     except Exception as e:
         print(f"save_user error: {e}")
+        return False
     finally:
         conn.close()
 
