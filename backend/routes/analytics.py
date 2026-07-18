@@ -8,7 +8,18 @@ analytics_bp = Blueprint("analytics", __name__)
 
 _analytics_cache = {}
 _cache_time = 0
-CACHE_TTL = 30  # seconds
+CACHE_TTL = 30
+
+# Keywords that indicate a consultation request
+CONSULTATION_KEYWORDS = [
+    "consult", "book", "appointment", "talk to", "speak to",
+    "contact", "lawyer", "legal expert", "schedule", "call me",
+    "reach out", "get in touch", "nikah_consult", "court_consult",
+    "divorce_consult", "custody_consult", "maintenance_consult",
+    "property_consult", "inheritance_consult", "corporate_consult",
+    "docs_consult", "contact_us", "book consultation",
+    "talk to a lawyer", "talk to expert", "book a consultation"
+]
 
 
 @analytics_bp.route("/analytics", methods=["GET"])
@@ -16,7 +27,6 @@ CACHE_TTL = 30  # seconds
 def get_analytics():
     global _analytics_cache, _cache_time
 
-    # Return cached result if fresh
     if time.time() - _cache_time < CACHE_TTL and _analytics_cache:
         return jsonify(_analytics_cache)
 
@@ -97,7 +107,6 @@ def get_analytics():
             "daily_activity": daily_activity,
         }
 
-        # Store in cache
         _analytics_cache = result
         _cache_time = time.time()
 
@@ -109,12 +118,63 @@ def get_analytics():
         conn.close()
 
 
+@analytics_bp.route("/consultations", methods=["GET"])
+@require_auth
+def get_consultations():
+    """Return list of users who requested a consultation."""
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        # Build SQL LIKE conditions for each keyword
+        conditions = " OR ".join(
+            ["LOWER(m.message) LIKE ?"] * len(CONSULTATION_KEYWORDS)
+        )
+        params = [f"%{kw}%" for kw in CONSULTATION_KEYWORDS]
+
+        c.execute(f"""
+            SELECT
+                u.phone,
+                u.name,
+                u.last_seen,
+                u.tags,
+                COUNT(DISTINCT m.id) as consult_count,
+                MAX(m.timestamp) as last_request,
+                (SELECT message FROM messages
+                 WHERE phone = u.phone
+                 AND ({conditions})
+                 ORDER BY id DESC LIMIT 1) as last_consult_message
+            FROM users u
+            JOIN messages m ON m.phone = u.phone
+            WHERE m.direction = 'user'
+            AND ({conditions})
+            GROUP BY u.phone
+            ORDER BY last_request DESC
+        """, params + params)
+
+        rows = c.fetchall()
+        return jsonify([
+            {
+                "phone": r[0],
+                "name": r[1] or "",
+                "last_seen": r[2],
+                "tags": r[3] or "",
+                "consult_count": r[4],
+                "last_request": r[5],
+                "last_consult_message": r[6] or "",
+            }
+            for r in rows
+        ])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+
 @analytics_bp.route("/reload-knowledge", methods=["POST"])
 @require_auth
 def reload_knowledge():
     from bot.ai_client import reload_knowledge as _reload
-    knowledge = _reload()
-    # Invalidate analytics cache too
     global _cache_time
+    knowledge = _reload()
     _cache_time = 0
     return jsonify({"success": True, "length": len(knowledge)})

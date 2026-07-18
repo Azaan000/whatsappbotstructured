@@ -10,6 +10,19 @@ import ChatArea from "./components/ChatArea";
 import BroadcastModal from "./components/BroadcastModal";
 import AnalyticsModal from "./components/AnalyticsModal";
 import EditUserModal from "./components/EditUserModal";
+import ConsultationsModal from "./components/ConsultationsModal";
+
+const CONSULT_KEYWORDS = [
+  "consult", "book", "appointment", "talk to", "speak to",
+  "contact", "lawyer", "legal expert", "schedule", "call me",
+  "reach out", "get in touch", "book consultation",
+  "talk to a lawyer", "talk to expert", "book a consultation"
+];
+
+function isConsultMessage(message) {
+  const lower = (message || "").toLowerCase();
+  return CONSULT_KEYWORDS.some((kw) => lower.includes(kw));
+}
 
 export default function App() {
   const [users, setUsers] = useState([]);
@@ -19,10 +32,16 @@ export default function App() {
   const [sending, setSending] = useState(false);
   const [typing, setTyping] = useState(false);
   const [loadError, setLoadError] = useState(false);
+
+  // Consultation tracking
+  const [unseenConsultPhones, setUnseenConsultPhones] = useState(new Set());
+  const consultationCount = unseenConsultPhones.size;
+
   const typingTimerRef = useRef(null);
 
   const [showBroadcast, setShowBroadcast] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
+  const [showConsultations, setShowConsultations] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
 
   const {
@@ -75,6 +94,14 @@ export default function App() {
 
     if (data.direction === "user") {
       incrementUnread(data.phone);
+
+      // If message is a consultation request and chat is not currently open
+      if (
+        isConsultMessage(data.message) &&
+        selectedPhoneRef.current !== data.phone
+      ) {
+        setUnseenConsultPhones((prev) => new Set(prev).add(data.phone));
+      }
     }
 
     if (selectedPhoneRef.current === data.phone) {
@@ -102,8 +129,6 @@ export default function App() {
   }, [selectedPhoneRef, incrementUnread, appendMessage, markAsRead]);
 
   const handleStatusUpdate = useCallback((data) => {
-    // Update regardless of which chat is open
-    // so status persists when user switches chats
     updateMessageStatus(data.whatsapp_message_id, data.status);
   }, [updateMessageStatus]);
 
@@ -158,12 +183,15 @@ export default function App() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [usersData, statsData] = await Promise.all([
+        const [usersData, statsData, consults] = await Promise.all([
           api.getUsers(),
           api.getAnalytics(),
+          api.getConsultations(),
         ]);
         setUsers(usersData);
         setStats(statsData);
+        // On initial load all consultation requests are "unseen"
+        setUnseenConsultPhones(new Set(consults.map((c) => c.phone)));
         setLoadError(false);
       } catch (e) {
         console.error("Initial load failed:", e);
@@ -173,13 +201,15 @@ export default function App() {
     load();
   }, []);
 
+  // Poll every 30s
   useEffect(() => {
-    const id = setInterval(async () => {
+    const fetchStats = async () => {
       try {
         const data = await api.getAnalytics();
         setStats(data);
       } catch {}
-    }, 30000);
+    };
+    const id = setInterval(fetchStats, 30000);
     return () => clearInterval(id);
   }, []);
 
@@ -192,6 +222,13 @@ export default function App() {
     markAsRead(user.phone);
     setTyping(false);
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+
+    // Mark consultation as seen when opening the chat
+    setUnseenConsultPhones((prev) => {
+      const next = new Set(prev);
+      next.delete(user.phone);
+      return next;
+    });
   }, [loadMessages, markAsRead]);
 
   // ── Send actions ─────────────────────────────────────────────────────────
@@ -280,12 +317,10 @@ export default function App() {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
 
-      {/* Server error banner */}
       {loadError && (
         <div style={{
           background: "#f44336", color: "#fff",
-          padding: "8px 20px", fontSize: 13, textAlign: "center",
-          flexShrink: 0,
+          padding: "8px 20px", fontSize: 13, textAlign: "center", flexShrink: 0,
         }}>
           Cannot connect to server. Make sure Flask is running on port 5000.
           <button
@@ -310,9 +345,34 @@ export default function App() {
         <span>Human: {stats.human_users || 0}</span>
         <span>Today: {stats.messages_today || 0}</span>
         <span>Avg response: {stats.avg_response_time || 0} min</span>
-        <button style={btnStyle("#667eea")} onClick={() => setShowAnalytics(true)}>Analytics</button>
-        <button style={btnStyle("#ff9800")} onClick={() => setShowBroadcast(true)}>Broadcast</button>
-        <button style={btnStyle("#4caf50")} onClick={() => api.reloadKnowledge()}>Reload knowledge</button>
+        <button style={btnStyle("#667eea")} onClick={() => setShowAnalytics(true)}>
+          Analytics
+        </button>
+        <button
+          style={{
+            ...btnStyle("#e53935"),
+            display: "flex", alignItems: "center", gap: 6,
+          }}
+          onClick={() => setShowConsultations(true)}
+        >
+          📋 Consultations
+          {consultationCount > 0 && (
+            <span style={{
+              background: "#fff", color: "#e53935",
+              borderRadius: "50%", width: 18, height: 18,
+              fontSize: 10, fontWeight: 700,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              {consultationCount}
+            </span>
+          )}
+        </button>
+        <button style={btnStyle("#ff9800")} onClick={() => setShowBroadcast(true)}>
+          Broadcast
+        </button>
+        <button style={btnStyle("#4caf50")} onClick={() => api.reloadKnowledge()}>
+          Reload knowledge
+        </button>
       </div>
 
       {/* Main layout */}
@@ -362,6 +422,13 @@ export default function App() {
       )}
       {showAnalytics && (
         <AnalyticsModal stats={stats} onClose={() => setShowAnalytics(false)} />
+      )}
+      {showConsultations && (
+        <ConsultationsModal
+          users={users}
+          onClose={() => setShowConsultations(false)}
+          onSelectUser={selectUser}
+        />
       )}
       {editingUser && (
         <EditUserModal

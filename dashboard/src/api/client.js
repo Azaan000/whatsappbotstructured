@@ -59,6 +59,8 @@ export const api = {
 
   getAnalytics: () => request("/analytics"),
 
+  getConsultations: () => request("/consultations"),
+
   exportCsv: (phone = null) => {
     const params = new URLSearchParams({ token: SECRET });
     if (phone) params.append("phone", phone);
