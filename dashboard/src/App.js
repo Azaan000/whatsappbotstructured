@@ -102,10 +102,10 @@ export default function App() {
   }, [selectedPhoneRef, incrementUnread, appendMessage, markAsRead]);
 
   const handleStatusUpdate = useCallback((data) => {
-    if (selectedPhoneRef.current === data.phone) {
-      updateMessageStatus(data.whatsapp_message_id, data.status);
-    }
-  }, [selectedPhoneRef, updateMessageStatus]);
+    // Update regardless of which chat is open
+    // so status persists when user switches chats
+    updateMessageStatus(data.whatsapp_message_id, data.status);
+  }, [updateMessageStatus]);
 
   const handleModeChanged = useCallback((data) => {
     setUsers((prev) =>

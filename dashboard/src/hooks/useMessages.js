@@ -44,18 +44,37 @@ export function useMessages(selectedPhone) {
 
   const updateMessageStatus = useCallback((waId, status) => {
     if (!waId) return;
-    setMessages((prev) =>
-      prev.map((m) => {
-        // Match by whatsapp_message_id if available
-        if (m.whatsapp_message_id && m.whatsapp_message_id === waId) {
-          return { ...m, status };
-        }
-        return m;
-      })
-    );
+    setMessages((prev) => {
+      // Try to find message by whatsapp_message_id
+      const hasMatch = prev.some(
+        (m) => m.whatsapp_message_id && m.whatsapp_message_id === waId
+      );
+
+      if (hasMatch) {
+        return prev.map((m) =>
+          m.whatsapp_message_id === waId ? { ...m, status } : m
+        );
+      }
+
+      // Fallback — update the most recent bot message that doesn't have
+      // a whatsapp_message_id yet (optimistic message waiting for confirmation)
+      const lastBotIndex = [...prev]
+        .reverse()
+        .findIndex((m) => m.direction === "bot" && !m.whatsapp_message_id);
+
+      if (lastBotIndex !== -1) {
+        const realIndex = prev.length - 1 - lastBotIndex;
+        return prev.map((m, i) =>
+          i === realIndex
+            ? { ...m, status, whatsapp_message_id: waId }
+            : m
+        );
+      }
+
+      return prev;
+    });
   }, []);
 
-  // Update status of optimistic (temp) message by _id after API confirms
   const updateTempStatus = useCallback((tempId, status) => {
     setMessages((prev) =>
       prev.map((m) => (m._id === tempId ? { ...m, status } : m))
