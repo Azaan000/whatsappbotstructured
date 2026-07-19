@@ -5,15 +5,46 @@ function statusIcon(status) {
   return { sent: "✓", delivered: "✓✓", read: "✓✓✓", sending: "⋯", failed: "⚠" }[status] || "";
 }
 function statusColor(status) {
-  return {
-    read: "#ffffff",
-    delivered: "#c8e6ff",
-    sent: "#a0c4ff",
-    failed: "#ff6b6b",
-  }[status] || "#a0c4ff";
+  return { read: "#ffffff", delivered: "#c8e6ff", sent: "#a0c4ff", failed: "#ff6b6b" }[status] || "#a0c4ff";
 }
 function typeIcon(type) {
-  return { image: "🖼", audio: "🎵", document: "📄", video: "🎬", file: "📎" }[type] || "💬";
+  // Only show icon for non-text types
+  return { image: "🖼", audio: "🎵", document: "📄", video: "🎬", file: "📎" }[type] || null;
+}
+
+function formatDateLabel(timestamp) {
+  if (!timestamp) return null;
+  const date = new Date(timestamp);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const msgDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  if (msgDate.getTime() === today.getTime()) return "Today";
+  if (msgDate.getTime() === yesterday.getTime()) return "Yesterday";
+  return date.toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" });
+}
+
+function isSameDay(ts1, ts2) {
+  if (!ts1 || !ts2) return false;
+  const a = new Date(ts1);
+  const b = new Date(ts2);
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function DateSeparator({ label }) {
+  return (
+    <div className={s.dateSep}>
+      <span className={s.dateSepLine} />
+      <span className={s.dateSepLabel}>{label}</span>
+      <span className={s.dateSepLine} />
+    </div>
+  );
 }
 
 function TypingBubble() {
@@ -118,30 +149,40 @@ export default function ChatArea({
         {!loading && filtered.length === 0 && (
           <div className={s.noMessages}>No messages yet.</div>
         )}
-        {filtered.map((msg, i) => (
-          <div
-            key={msg._id || msg.whatsapp_message_id || i}
-            className={`${s.bubble} ${msg.direction === "user" ? s.bubbleUser : s.bubbleBot}`}
-          >
-            <div className={s.bubbleBody}>
-              <span className={s.typeIcon}>{typeIcon(msg.message_type)}</span>
-              {msg.file_name && <span className={s.fileName}>{msg.file_name}</span>}
-              <span>{msg.message || `[${msg.message_type} message]`}</span>
-            </div>
-            <div className={s.bubbleMeta}>
-              {msg.timestamp && new Date(msg.timestamp).toLocaleTimeString()}
-              {msg.direction === "bot" && (
-                <span style={{ marginLeft: 4, color: statusColor(msg.status), fontSize: 12, fontWeight: "bold" }}>
-                  {statusIcon(msg.status)}
-                </span>
-              )}
-            </div>
-          </div>
-        ))}
 
-        {/* Typing bubble — shown on left side like incoming message */}
+        {filtered.map((msg, i) => {
+          const prevMsg = filtered[i - 1];
+          const showDateSep = !isSameDay(prevMsg?.timestamp, msg.timestamp);
+          const dateLabel = formatDateLabel(msg.timestamp);
+          const icon = typeIcon(msg.message_type);
+          const isText = !icon; // no icon means it's a plain text message
+
+          return (
+            <React.Fragment key={msg._id || msg.whatsapp_message_id || i}>
+              {showDateSep && dateLabel && <DateSeparator label={dateLabel} />}
+              <div
+                className={`${s.bubble} ${msg.direction === "user" ? s.bubbleUser : s.bubbleBot}`}
+              >
+                <div className={s.bubbleBody}>
+                  {/* Only show icon for non-text messages */}
+                  {!isText && <span className={s.typeIcon}>{icon}</span>}
+                  {msg.file_name && <span className={s.fileName}>{msg.file_name}</span>}
+                  <span>{msg.message || `[${msg.message_type} message]`}</span>
+                </div>
+                <div className={s.bubbleMeta}>
+                  {msg.timestamp && new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  {msg.direction === "bot" && (
+                    <span style={{ marginLeft: 4, color: statusColor(msg.status), fontSize: 12, fontWeight: "bold" }}>
+                      {statusIcon(msg.status)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </React.Fragment>
+          );
+        })}
+
         {typing && <TypingBubble />}
-
         <div ref={endRef} />
       </div>
 

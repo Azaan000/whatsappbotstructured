@@ -2,12 +2,43 @@ import React, { useState } from "react";
 import { api } from "../api/client";
 import s from "../styles/Sidebar.module.css";
 
+function getInitials(name, phone) {
+  if (name) {
+    const parts = name.trim().split(" ");
+    return parts.length >= 2
+      ? (parts[0][0] + parts[1][0]).toUpperCase()
+      : parts[0][0].toUpperCase();
+  }
+  return phone?.slice(-2) || "?";
+}
+
+// Deterministic color per phone number
+const AVATAR_COLORS = [
+  "#667eea", "#764ba2", "#f093fb", "#4facfe",
+  "#43e97b", "#fa709a", "#fd7043", "#26c6da",
+];
+function avatarColor(phone) {
+  let sum = 0;
+  for (const ch of (phone || "")) sum += ch.charCodeAt(0);
+  return AVATAR_COLORS[sum % AVATAR_COLORS.length];
+}
+
 export default function Sidebar({
   users, selectedPhone, connected, unreadCounts,
-  highlightedUsers, onSelect, onExportAll, onUserDeleted,
+  highlightedUsers, onSelect, onExportAll, onUserDeleted, onMarkAllRead,
 }) {
   const [confirmPhone, setConfirmPhone] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filtered = search.trim()
+    ? users.filter((u) =>
+        u.phone.includes(search) ||
+        (u.name || "").toLowerCase().includes(search.toLowerCase())
+      )
+    : users;
+
+  const totalUnread = users.reduce((acc, u) => acc + (unreadCounts[u.phone] || 0), 0);
 
   const handleDelete = async (e, phone) => {
     e.stopPropagation();
@@ -19,7 +50,7 @@ export default function Sidebar({
     try {
       await api.deleteUser(confirmPhone);
       onUserDeleted(confirmPhone);
-    } catch (err) {
+    } catch {
       alert("Failed to delete user.");
     } finally {
       setDeleting(false);
@@ -29,62 +60,103 @@ export default function Sidebar({
 
   return (
     <aside className={s.sidebar}>
-      <div className={s.titleRow}>
-        <h2 className={s.title}>WhatsApp Dashboard</h2>
-      </div>
-      <div className={s.meta}>
-        {users.length} chats &nbsp;·&nbsp;
-        <span style={{ color: connected ? "#4caf50" : "#f44336" }}>
-          {connected ? "Live" : "Reconnecting..."}
-        </span>
+      {/* Header */}
+      <div className={s.header}>
+        <div className={s.headerTop}>
+          <span className={s.title}>Chats</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span className={s.connDot} style={{ background: connected ? "#4caf50" : "#f44336" }} />
+            {totalUnread > 0 && (
+              <button className={s.markAllBtn} onClick={onMarkAllRead} title="Mark all as read">
+                ✓ All read
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Search */}
+        <div className={s.searchWrap}>
+          <span className={s.searchIcon}>🔍</span>
+          <input
+            className={s.searchInput}
+            placeholder="Search chats..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search && (
+            <button className={s.searchClear} onClick={() => setSearch("")}>✕</button>
+          )}
+        </div>
+
+        <button className={s.exportBtn} onClick={onExportAll}>
+          ↓ Export all
+        </button>
       </div>
 
-      <button className={s.exportBtn} onClick={onExportAll}>
-        Export all conversations
-      </button>
-
+      {/* User list */}
       <div className={s.list}>
-        {users.length === 0 && (
-          <p className={s.empty}>No users yet. Waiting for messages...</p>
+        {filtered.length === 0 && (
+          <p className={s.empty}>
+            {search ? "No chats match your search." : "No users yet. Waiting for messages..."}
+          </p>
         )}
-        {users.map((user) => {
+        {filtered.map((user) => {
           const isUnread = highlightedUsers.has(user.phone);
           const count = unreadCounts[user.phone] || 0;
           const active = selectedPhone === user.phone;
+          const initials = getInitials(user.name, user.phone);
+          const color = avatarColor(user.phone);
+
           return (
             <div
               key={user.phone}
               className={`${s.user} ${active ? s.active : ""} ${isUnread && !active ? s.unread : ""}`}
               onClick={() => onSelect(user)}
             >
-              <div className={s.row}>
-                <div>
-                  {user.name && <div className={s.name}>{user.name}</div>}
-                  <span className={s.phone}>{user.phone}</span>
+              {/* Avatar */}
+              <div className={s.avatarWrap}>
+                <div className={s.avatar} style={{ background: color }}>
+                  {initials}
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  {count > 0 && <span className={s.badge}>{count}</span>}
+                {/* Mode dot */}
+                <span
+                  className={s.modeDot}
+                  style={{ background: user.human_mode ? "#ff9800" : "#4caf50" }}
+                  title={user.human_mode ? "Human mode" : "AI mode"}
+                />
+              </div>
+
+              {/* Content */}
+              <div className={s.content}>
+                <div className={s.row}>
+                  <div className={s.nameGroup}>
+                    <span className={s.name}>{user.name || user.phone}</span>
+                    {user.name && <span className={s.phone}>{user.phone}</span>}
+                  </div>
+                  <div className={s.rightGroup}>
+                    {user.last_seen && (
+                      <span className={s.time}>
+                        {new Date(user.last_seen).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    )}
+                    {count > 0 && <span className={s.badge}>{count}</span>}
+                  </div>
+                </div>
+
+                <div className={s.lastRow}>
+                  <span className={`${s.last} ${isUnread && !active ? s.lastUnread : ""}`}>
+                    {user.last || "No messages yet"}
+                  </span>
                   <button
                     className={s.deleteBtn}
                     onClick={(e) => handleDelete(e, user.phone)}
-                    title="Delete user"
+                    title="Delete"
                   >
                     🗑
                   </button>
                 </div>
-              </div>
-              <div className={s.stats}>
-                {user.total_messages} msgs
+
                 {user.tags && <span className={s.tag}>{user.tags}</span>}
-              </div>
-              <div className={`${s.last} ${isUnread && !active ? s.lastUnread : ""}`}>
-                {user.last || "No messages yet"}
-              </div>
-              <div className={s.time}>
-                {user.last_seen && new Date(user.last_seen).toLocaleTimeString()}
-              </div>
-              <div className={s.mode} style={{ color: user.human_mode ? "#ff9800" : "#4caf50" }}>
-                {user.human_mode ? "Human mode" : "AI mode"}
               </div>
             </div>
           );
@@ -93,30 +165,17 @@ export default function Sidebar({
 
       {/* Confirm delete dialog */}
       {confirmPhone && (
-        <div style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
-          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000,
-        }}>
-          <div style={{
-            background: "#fff", borderRadius: 12, padding: 24,
-            width: 320, boxShadow: "0 10px 40px rgba(0,0,0,0.2)",
-          }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000 }}>
+          <div style={{ background: "#fff", borderRadius: 12, padding: 24, width: 320, boxShadow: "0 10px 40px rgba(0,0,0,0.2)" }}>
             <h3 style={{ marginBottom: 8, color: "#333" }}>Delete user?</h3>
             <p style={{ fontSize: 13, color: "#666", marginBottom: 20 }}>
-              This will permanently delete <strong>{confirmPhone}</strong> and all their messages from the database. This cannot be undone.
+              This will permanently delete <strong>{confirmPhone}</strong> and all their messages. This cannot be undone.
             </p>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button
-                onClick={() => setConfirmPhone(null)}
-                style={{ padding: "8px 16px", background: "#f5f5f5", border: "1px solid #ddd", borderRadius: 8, cursor: "pointer" }}
-              >
+              <button onClick={() => setConfirmPhone(null)} style={{ padding: "8px 16px", background: "#f5f5f5", border: "1px solid #ddd", borderRadius: 8, cursor: "pointer" }}>
                 Cancel
               </button>
-              <button
-                onClick={confirmDelete}
-                disabled={deleting}
-                style={{ padding: "8px 16px", background: "#f44336", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer" }}
-              >
+              <button onClick={confirmDelete} disabled={deleting} style={{ padding: "8px 16px", background: "#f44336", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer" }}>
                 {deleting ? "Deleting..." : "Delete"}
               </button>
             </div>
