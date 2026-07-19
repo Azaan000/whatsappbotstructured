@@ -57,6 +57,9 @@ export const api = {
       body: JSON.stringify({ phone, tags, notes }),
     }),
 
+  deleteUser: (phone) =>
+    request(`/delete-user/${phone}`, { method: "DELETE" }),
+
   getAnalytics: () => request("/analytics"),
 
   getConsultations: () => request("/consultations"),

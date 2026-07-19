@@ -8,6 +8,7 @@ from werkzeug.utils import secure_filename
 
 from models.user import get_all_users, toggle_user_mode, update_user_meta
 from models.message import save_message, get_messages, get_all_messages_for_export
+from models.database import get_db
 from bot.whatsapp_handler import send_text, send_media, resolve_media_type
 from utils.auth import require_auth
 
@@ -60,6 +61,34 @@ def update_user():
         return jsonify({"error": "phone required"}), 400
     update_user_meta(phone, tags, notes, _socketio())
     return jsonify({"success": True})
+
+
+@chat_bp.route("/delete-user/<phone>", methods=["DELETE"])
+@require_auth
+def delete_user(phone):
+    """Delete a user and all their messages from the database."""
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        # Check user exists
+        cursor.execute("SELECT phone FROM users WHERE phone=?", (phone,))
+        if not cursor.fetchone():
+            return jsonify({"error": "User not found"}), 404
+
+        # Delete messages first (foreign key order)
+        cursor.execute("DELETE FROM messages WHERE phone=?", (phone,))
+        cursor.execute("DELETE FROM users WHERE phone=?", (phone,))
+        conn.commit()
+
+        # Notify dashboard via socket
+        _socketio().emit("user_deleted", {"phone": phone})
+        print(f"Deleted user and messages: {phone}")
+        return jsonify({"success": True, "phone": phone})
+    except Exception as e:
+        print(f"delete_user error: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
 
 
 # ── Messages ───────────────────────────────────────────────────────────────
@@ -116,7 +145,6 @@ def send_file_route():
 
     success, wa_id = send_media(phone, filepath, media_type, caption)
 
-    # Clean up local file after upload
     try:
         os.remove(filepath)
     except Exception:

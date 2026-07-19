@@ -24,6 +24,27 @@ function isConsultMessage(message) {
   return CONSULT_KEYWORDS.some((kw) => lower.includes(kw));
 }
 
+// Persist seen consultation phones in localStorage
+function getSeenConsults() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem("seen_consults") || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveSeenConsults(set) {
+  try {
+    localStorage.setItem("seen_consults", JSON.stringify([...set]));
+  } catch {}
+}
+
+function markConsultSeen(phone) {
+  const seen = getSeenConsults();
+  seen.add(phone);
+  saveSeenConsults(seen);
+}
+
 export default function App() {
   const [users, setUsers] = useState([]);
   const [selectedPhone, setSelectedPhone] = useState(null);
@@ -33,7 +54,7 @@ export default function App() {
   const [typing, setTyping] = useState(false);
   const [loadError, setLoadError] = useState(false);
 
-  // Consultation tracking
+  // Only phones with UNSEEN consultation requests
   const [unseenConsultPhones, setUnseenConsultPhones] = useState(new Set());
   const consultationCount = unseenConsultPhones.size;
 
@@ -95,12 +116,20 @@ export default function App() {
     if (data.direction === "user") {
       incrementUnread(data.phone);
 
-      // If message is a consultation request and chat is not currently open
-      if (
-        isConsultMessage(data.message) &&
-        selectedPhoneRef.current !== data.phone
-      ) {
-        setUnseenConsultPhones((prev) => new Set(prev).add(data.phone));
+      // New consultation request — mark unseen instantly if not currently open
+      if (isConsultMessage(data.message)) {
+        const seen = getSeenConsults();
+        if (
+          !seen.has(data.phone) ||
+          selectedPhoneRef.current !== data.phone
+        ) {
+          // Remove from seen so it shows as new
+          seen.delete(data.phone);
+          saveSeenConsults(seen);
+          if (selectedPhoneRef.current !== data.phone) {
+            setUnseenConsultPhones((prev) => new Set(prev).add(data.phone));
+          }
+        }
       }
     }
 
@@ -168,6 +197,28 @@ export default function App() {
     }
   }, [selectedPhoneRef]);
 
+  const handleUserDeleted = useCallback((phone) => {
+    setUsers((prev) => prev.filter((u) => u.phone !== phone));
+    setUnseenConsultPhones((prev) => {
+      const next = new Set(prev);
+      next.delete(phone);
+      return next;
+    });
+    // Also remove from seen storage
+    const seen = getSeenConsults();
+    seen.delete(phone);
+    saveSeenConsults(seen);
+
+    if (selectedPhoneRef.current === phone) {
+      setSelectedPhone(null);
+      setSelectedUser(null);
+    }
+  }, [selectedPhoneRef]);
+
+  const handleUserDeletedSocket = useCallback((data) => {
+    handleUserDeleted(data.phone);
+  }, [handleUserDeleted]);
+
   const { connected } = useSocket({
     onNewUser: handleNewUser,
     onUserUpdate: handleUserUpdate,
@@ -176,6 +227,7 @@ export default function App() {
     onModeChanged: handleModeChanged,
     onUserUpdated: handleUserUpdated,
     onUserTyping: handleUserTyping,
+    onUserDeleted: handleUserDeletedSocket,
   });
 
   // ── Initial load ─────────────────────────────────────────────────────────
@@ -190,8 +242,15 @@ export default function App() {
         ]);
         setUsers(usersData);
         setStats(statsData);
-        // On initial load all consultation requests are "unseen"
-        setUnseenConsultPhones(new Set(consults.map((c) => c.phone)));
+
+        // Compare server consultations against locally seen ones
+        const seen = getSeenConsults();
+        const unseen = new Set(
+          consults
+            .map((c) => c.phone)
+            .filter((phone) => !seen.has(phone))
+        );
+        setUnseenConsultPhones(unseen);
         setLoadError(false);
       } catch (e) {
         console.error("Initial load failed:", e);
@@ -201,7 +260,6 @@ export default function App() {
     load();
   }, []);
 
-  // Poll every 30s
   useEffect(() => {
     const fetchStats = async () => {
       try {
@@ -223,7 +281,8 @@ export default function App() {
     setTyping(false);
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
 
-    // Mark consultation as seen when opening the chat
+    // Mark consultation as seen
+    markConsultSeen(user.phone);
     setUnseenConsultPhones((prev) => {
       const next = new Set(prev);
       next.delete(user.phone);
@@ -236,7 +295,6 @@ export default function App() {
   const handleSend = useCallback(async (text) => {
     if (!selectedPhone || sending) return;
     setSending(true);
-
     const temp = {
       _id: Date.now(),
       message: text,
@@ -246,7 +304,6 @@ export default function App() {
       message_type: "text",
     };
     appendMessage(temp);
-
     try {
       await api.sendMessage(selectedPhone, text);
       updateTempStatus(temp._id, "sent");
@@ -261,7 +318,6 @@ export default function App() {
   const handleSendFile = useCallback(async (file) => {
     if (!selectedPhone || sending) return;
     setSending(true);
-
     const temp = {
       _id: Date.now(),
       message: file.name,
@@ -272,7 +328,6 @@ export default function App() {
       file_name: file.name,
     };
     appendMessage(temp);
-
     try {
       await api.sendFile(selectedPhone, file);
       updateTempStatus(temp._id, "sent");
@@ -293,9 +348,7 @@ export default function App() {
       setSelectedUser((prev) => ({ ...prev, human_mode: data.human_mode }));
       setUsers((prev) =>
         prev.map((u) =>
-          u.phone === selectedPhone
-            ? { ...u, human_mode: data.human_mode }
-            : u
+          u.phone === selectedPhone ? { ...u, human_mode: data.human_mode } : u
         )
       );
     } catch (e) {
@@ -337,7 +390,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Top bar */}
       <div style={barStyle}>
         <span>Users: {stats.total_users || 0}</span>
         <span>Messages: {stats.total_messages || 0}</span>
@@ -345,14 +397,9 @@ export default function App() {
         <span>Human: {stats.human_users || 0}</span>
         <span>Today: {stats.messages_today || 0}</span>
         <span>Avg response: {stats.avg_response_time || 0} min</span>
-        <button style={btnStyle("#667eea")} onClick={() => setShowAnalytics(true)}>
-          Analytics
-        </button>
+        <button style={btnStyle("#667eea")} onClick={() => setShowAnalytics(true)}>Analytics</button>
         <button
-          style={{
-            ...btnStyle("#e53935"),
-            display: "flex", alignItems: "center", gap: 6,
-          }}
+          style={{ ...btnStyle("#e53935"), display: "flex", alignItems: "center", gap: 6 }}
           onClick={() => setShowConsultations(true)}
         >
           📋 Consultations
@@ -367,15 +414,10 @@ export default function App() {
             </span>
           )}
         </button>
-        <button style={btnStyle("#ff9800")} onClick={() => setShowBroadcast(true)}>
-          Broadcast
-        </button>
-        <button style={btnStyle("#4caf50")} onClick={() => api.reloadKnowledge()}>
-          Reload knowledge
-        </button>
+        <button style={btnStyle("#ff9800")} onClick={() => setShowBroadcast(true)}>Broadcast</button>
+        <button style={btnStyle("#4caf50")} onClick={() => api.reloadKnowledge()}>Reload knowledge</button>
       </div>
 
-      {/* Main layout */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <Sidebar
           users={users}
@@ -385,6 +427,7 @@ export default function App() {
           highlightedUsers={highlightedUsers}
           onSelect={selectUser}
           onExportAll={() => api.exportCsv()}
+          onUserDeleted={handleUserDeleted}
         />
         <ChatArea
           user={selectedUser}
@@ -400,7 +443,6 @@ export default function App() {
         />
       </div>
 
-      {/* Connection dot */}
       <div style={{
         position: "fixed", bottom: 12, right: 12,
         background: connected ? "#4caf50" : "#f44336",
@@ -416,7 +458,6 @@ export default function App() {
         {connected ? "Live" : "Reconnecting…"}
       </div>
 
-      {/* Modals */}
       {showBroadcast && (
         <BroadcastModal users={users} onClose={() => setShowBroadcast(false)} />
       )}
@@ -428,6 +469,7 @@ export default function App() {
           users={users}
           onClose={() => setShowConsultations(false)}
           onSelectUser={selectUser}
+          onUserDeleted={handleUserDeleted}
         />
       )}
       {editingUser && (

@@ -11,7 +11,7 @@
 .card {
   display: flex; align-items: center; gap: 14px;
   padding: 14px 16px; background: #f8f9fa;
-  border-radius: 12px; cursor: pointer;
+  border-radius: 12px;
   border: 1px solid var(--color-border-tertiary);
   transition: all 0.15s;
 }
@@ -25,7 +25,7 @@
   display: flex; align-items: center; justify-content: center;
 }
 
-.cardBody { flex: 1; min-width: 0; }
+.cardBody { flex: 1; min-width: 0; cursor: pointer; }
 .nameRow { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
 .name { font-size: 14px; font-weight: 600; color: #333; }
 .phone { font-size: 11px; color: #999; }
@@ -39,10 +39,18 @@
 
 .meta { display: flex; gap: 14px; font-size: 11px; color: #888; }
 
-.cardRight { flex-shrink: 0; }
+.cardRight { flex-shrink: 0; display: flex; flex-direction: column; gap: 6px; }
+
 .openBtn {
   padding: 7px 14px; background: #0b5cff; color: #fff;
   border: none; border-radius: 8px; cursor: pointer;
   font-size: 12px; font-weight: 600; white-space: nowrap;
 }
 .card:hover .openBtn { background: #0044cc; }
+
+.deleteBtn {
+  padding: 6px 12px; background: #fff0f0; color: #f44336;
+  border: 1px solid #ffcdd2; border-radius: 8px; cursor: pointer;
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.deleteBtn:hover { background: #f44336; color: #fff; }

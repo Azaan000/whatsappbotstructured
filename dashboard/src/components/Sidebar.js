@@ -1,7 +1,32 @@
-import React from "react";
+import React, { useState } from "react";
+import { api } from "../api/client";
 import s from "../styles/Sidebar.module.css";
 
-export default function Sidebar({ users, selectedPhone, connected, unreadCounts, highlightedUsers, onSelect, onExportAll }) {
+export default function Sidebar({
+  users, selectedPhone, connected, unreadCounts,
+  highlightedUsers, onSelect, onExportAll, onUserDeleted,
+}) {
+  const [confirmPhone, setConfirmPhone] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async (e, phone) => {
+    e.stopPropagation();
+    setConfirmPhone(phone);
+  };
+
+  const confirmDelete = async () => {
+    setDeleting(true);
+    try {
+      await api.deleteUser(confirmPhone);
+      onUserDeleted(confirmPhone);
+    } catch (err) {
+      alert("Failed to delete user.");
+    } finally {
+      setDeleting(false);
+      setConfirmPhone(null);
+    }
+  };
+
   return (
     <aside className={s.sidebar}>
       <div className={s.titleRow}>
@@ -33,11 +58,20 @@ export default function Sidebar({ users, selectedPhone, connected, unreadCounts,
               onClick={() => onSelect(user)}
             >
               <div className={s.row}>
-              <div>
-                {user.name && <div className={s.name}>{user.name}</div>}
-                 <span className={s.phone}>{user.phone}</span>
-              </div>
-                {count > 0 && <span className={s.badge}>{count}</span>}
+                <div>
+                  {user.name && <div className={s.name}>{user.name}</div>}
+                  <span className={s.phone}>{user.phone}</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  {count > 0 && <span className={s.badge}>{count}</span>}
+                  <button
+                    className={s.deleteBtn}
+                    onClick={(e) => handleDelete(e, user.phone)}
+                    title="Delete user"
+                  >
+                    🗑
+                  </button>
+                </div>
               </div>
               <div className={s.stats}>
                 {user.total_messages} msgs
@@ -56,6 +90,39 @@ export default function Sidebar({ users, selectedPhone, connected, unreadCounts,
           );
         })}
       </div>
+
+      {/* Confirm delete dialog */}
+      {confirmPhone && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000,
+        }}>
+          <div style={{
+            background: "#fff", borderRadius: 12, padding: 24,
+            width: 320, boxShadow: "0 10px 40px rgba(0,0,0,0.2)",
+          }}>
+            <h3 style={{ marginBottom: 8, color: "#333" }}>Delete user?</h3>
+            <p style={{ fontSize: 13, color: "#666", marginBottom: 20 }}>
+              This will permanently delete <strong>{confirmPhone}</strong> and all their messages from the database. This cannot be undone.
+            </p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setConfirmPhone(null)}
+                style={{ padding: "8px 16px", background: "#f5f5f5", border: "1px solid #ddd", borderRadius: 8, cursor: "pointer" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting}
+                style={{ padding: "8px 16px", background: "#f44336", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer" }}
+              >
+                {deleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }
