@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { api } from "../api/client";
 import s from "../styles/Modal.module.css";
 
@@ -6,9 +6,24 @@ export default function EditUserModal({ user, onClose, onSaved }) {
   const [tags, setTags] = useState(user.tags || "");
   const [notes, setNotes] = useState(user.notes || "");
   const [saving, setSaving] = useState(false);
+  const [firstSeen, setFirstSeen] = useState(null);
   const modalRef = useRef(null);
 
-  const handleOverlay = (e) => { if (!modalRef.current?.contains(e.target)) onClose(); };
+  // Fetch first seen date from user data
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const users = await api.getUsers();
+        const found = users.find((u) => u.phone === user.phone);
+        if (found?.first_seen) setFirstSeen(found.first_seen);
+      } catch {}
+    };
+    fetchUser();
+  }, [user.phone]);
+
+  const handleOverlay = (e) => {
+    if (!modalRef.current?.contains(e.target)) onClose();
+  };
 
   const save = async () => {
     setSaving(true);
@@ -16,7 +31,7 @@ export default function EditUserModal({ user, onClose, onSaved }) {
       await api.updateUser(user.phone, tags, notes);
       onSaved({ tags, notes });
       onClose();
-    } catch (e) {
+    } catch {
       alert("Failed to update user");
     } finally {
       setSaving(false);
@@ -31,17 +46,56 @@ export default function EditUserModal({ user, onClose, onSaved }) {
           <button className={s.closeBtn} onClick={onClose}>×</button>
         </div>
         <div className={s.body}>
-          <div className={s.field}>
-            <label>Phone</label>
-            <p><strong>{user.phone}</strong></p>
+          {/* User info card */}
+          <div style={{
+            background: "#f8f9fa", borderRadius: 10, padding: "12px 14px",
+            marginBottom: 16, display: "flex", flexDirection: "column", gap: 6,
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#111" }}>
+                {user.name || user.phone}
+              </span>
+              {user.human_mode !== undefined && (
+                <span style={{
+                  fontSize: 11, padding: "2px 8px", borderRadius: 10, fontWeight: 500,
+                  background: user.human_mode ? "#fff3e0" : "#e8f5e9",
+                  color: user.human_mode ? "#e65100" : "#2e7d32",
+                }}>
+                  {user.human_mode ? "Human mode" : "AI mode"}
+                </span>
+              )}
+            </div>
+            {user.name && (
+              <span style={{ fontSize: 11, color: "#999" }}>{user.phone}</span>
+            )}
+            <div style={{ display: "flex", gap: 16, marginTop: 2 }}>
+              {firstSeen && (
+                <span style={{ fontSize: 11, color: "#888" }}>
+                  📅 First contact: {new Date(firstSeen).toLocaleDateString([], {
+                    day: "numeric", month: "long", year: "numeric",
+                  })}
+                </span>
+              )}
+              {user.last_seen && (
+                <span style={{ fontSize: 11, color: "#888" }}>
+                  🕐 Last seen: {new Date(user.last_seen).toLocaleDateString([], {
+                    day: "numeric", month: "long", year: "numeric",
+                  })}
+                </span>
+              )}
+            </div>
+            <span style={{ fontSize: 11, color: "#888" }}>
+              📨 {user.total_messages || 0} total messages
+            </span>
           </div>
+
           <div className={s.field}>
             <label>Tags (comma separated)</label>
             <input
               className={s.input}
               value={tags}
               onChange={(e) => setTags(e.target.value)}
-              placeholder="e.g. VIP, lead"
+              placeholder="e.g. VIP, lead, interested"
             />
           </div>
           <div className={s.field}>
@@ -51,7 +105,7 @@ export default function EditUserModal({ user, onClose, onSaved }) {
               rows={4}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Internal notes..."
+              placeholder="Internal notes about this user..."
             />
           </div>
         </div>

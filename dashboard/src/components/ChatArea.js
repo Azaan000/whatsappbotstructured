@@ -5,12 +5,11 @@ function statusIcon(status) {
   return { sent: "✓", delivered: "✓✓", read: "✓✓✓", sending: "⋯", failed: "⚠" }[status] || "";
 }
 function statusColor(status) {
-  return { read: "#ffffff", delivered: "#c8e6ff", sent: "#a0c4ff", failed: "#ff6b6b" }[status] || "#a0c4ff";
+  return { read: "#0000FF", delivered: "#7393B3", sent: "#7393B3", failed: "#ff6b6b" }[status] || "#a0c4ff";
 }
 function typeIcon(type) {
   return { image: "🖼", audio: "🎵", document: "📄", video: "🎬", file: "📎" }[type] || null;
 }
-
 function formatDateLabel(timestamp) {
   if (!timestamp) return null;
   const date = new Date(timestamp);
@@ -23,7 +22,6 @@ function formatDateLabel(timestamp) {
   if (msgDate.getTime() === yesterday.getTime()) return "Yesterday";
   return date.toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" });
 }
-
 function isSameDay(ts1, ts2) {
   if (!ts1 || !ts2) return false;
   const a = new Date(ts1);
@@ -41,6 +39,7 @@ function DateSeparator({ label }) {
   );
 }
 
+// Typing bubble — only shown when USER is typing (incoming), not bot
 function TypingBubble() {
   return (
     <div className={s.typingBubbleWrap}>
@@ -53,6 +52,8 @@ function TypingBubble() {
   );
 }
 
+const seenKeys = new Set();
+
 export default function ChatArea({
   user, messages, loading, typing, sending,
   onSend, onSendFile, onToggleMode, onEdit, onExport
@@ -63,10 +64,18 @@ export default function ChatArea({
   const [showTooltip, setShowTooltip] = useState(null);
   const endRef = useRef(null);
   const fileRef = useRef(null);
+  const prevPhoneRef = useRef(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typing]);
+
+  useEffect(() => {
+    if (user?.phone !== prevPhoneRef.current) {
+      seenKeys.clear();
+      prevPhoneRef.current = user?.phone;
+    }
+  }, [user?.phone]);
 
   const handleSend = () => {
     if (!text.trim() || sending) return;
@@ -88,12 +97,35 @@ export default function ChatArea({
   if (!user) {
     return (
       <div className={s.empty}>
-        <div className={s.emptyIcon}>💬</div>
-        <div>Select a chat to start messaging</div>
-        <div className={s.emptySub}>New users appear instantly in the sidebar</div>
+        <div className={s.emptyIllustration}>
+          <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
+            <circle cx="60" cy="60" r="56" fill="#e8eaf6" />
+            <rect x="28" y="38" width="64" height="44" rx="8" fill="#fff" />
+            <rect x="36" y="50" width="32" height="6" rx="3" fill="#c5cae9" />
+            <rect x="36" y="62" width="22" height="6" rx="3" fill="#e8eaf6" />
+            <circle cx="84" cy="78" r="14" fill="#667eea" />
+            <path d="M78 78h12M84 72v12" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" />
+          </svg>
+        </div>
+        <div className={s.emptyTitle}>Welcome to the dashboard</div>
+        <div className={s.emptySubtitle}>Select a chat from the sidebar to start messaging</div>
+        <div className={s.emptyHint}>New users appear instantly when they message you</div>
       </div>
     );
   }
+
+  // Action buttons config
+  const actionBtns = [
+    {
+      key: "toggle",
+      icon: user.human_mode ? "🤖" : "👤",
+      label: user.human_mode ? "Switch to AI" : "Switch to Human",
+      action: onToggleMode,
+      color: user.human_mode ? "#0b5cff" : "#ff9800",
+    },
+    { key: "edit",   icon: "✏️",  label: "Edit user",  action: onEdit,   color: "#9c27b0" },
+    { key: "export", icon: "⬇️", label: "Export chat", action: onExport, color: "#4caf50" },
+  ];
 
   return (
     <div className={s.chat}>
@@ -101,30 +133,20 @@ export default function ChatArea({
       {/* ── Header ── */}
       <div className={s.header}>
         <div className={s.headerLeft}>
-          {/* Avatar */}
           <div className={s.headerAvatar} style={{ background: user.human_mode ? "#ff9800" : "#667eea" }}>
             {(user.name || user.phone).charAt(0).toUpperCase()}
           </div>
-          {/* Name + meta */}
           <div>
             <div className={s.headerName}>
               {user.name || user.phone}
-              {user.name && (
-                <span className={s.headerPhone}>({user.phone})</span>
-              )}
+              {user.name && <span className={s.headerPhone}>({user.phone})</span>}
             </div>
             <div className={s.headerMeta}>
-              <span
-                className={s.modePill}
-                style={{
-                  background: user.human_mode ? "#fff3e0" : "#e8f5e9",
-                  color: user.human_mode ? "#e65100" : "#2e7d32",
-                }}
-              >
-                <span
-                  className={s.modePillDot}
-                  style={{ background: user.human_mode ? "#ff9800" : "#4caf50" }}
-                />
+              <span className={s.modePill} style={{
+                background: user.human_mode ? "#fff3e0" : "#e8f5e9",
+                color: user.human_mode ? "#e65100" : "#2e7d32",
+              }}>
+                <span className={s.modePillDot} style={{ background: user.human_mode ? "#ff9800" : "#4caf50" }} />
                 {user.human_mode ? "Human mode" : "AI mode"}
               </span>
               {user.tags && <span className={s.tagBadge}>{user.tags}</span>}
@@ -133,57 +155,23 @@ export default function ChatArea({
           </div>
         </div>
 
-        {/* ── Icon buttons ── */}
+        {/* ── Action buttons with label underneath ── */}
         <div className={s.headerActions}>
-          {/* Toggle mode */}
-          <div className={s.iconBtnWrap}>
+          {actionBtns.map((btn) => (
             <button
-              className={s.iconBtn}
-              onClick={onToggleMode}
-              onMouseEnter={() => setShowTooltip("toggle")}
+              key={btn.key}
+              className={s.actionBtn}
+              onClick={btn.action}
+              onMouseEnter={() => setShowTooltip(btn.key)}
               onMouseLeave={() => setShowTooltip(null)}
-              title={user.human_mode ? "Switch to AI mode" : "Switch to Human mode"}
+              style={{ "--btn-color": btn.color }}
             >
-              {user.human_mode ? "🤖" : "👤"}
+              <span className={s.actionBtnIcon}>{btn.icon}</span>
+              <span className={`${s.actionBtnLabel} ${showTooltip === btn.key ? s.actionBtnLabelVisible : ""}`}>
+                {btn.label}
+              </span>
             </button>
-            {showTooltip === "toggle" && (
-              <div className={s.tooltip}>
-                {user.human_mode ? "Switch to AI" : "Switch to Human"}
-              </div>
-            )}
-          </div>
-
-          {/* Edit */}
-          <div className={s.iconBtnWrap}>
-            <button
-              className={s.iconBtn}
-              onClick={onEdit}
-              onMouseEnter={() => setShowTooltip("edit")}
-              onMouseLeave={() => setShowTooltip(null)}
-              title="Edit user"
-            >
-              ✏️
-            </button>
-            {showTooltip === "edit" && (
-              <div className={s.tooltip}>Edit user</div>
-            )}
-          </div>
-
-          {/* Export */}
-          <div className={s.iconBtnWrap}>
-            <button
-              className={s.iconBtn}
-              onClick={onExport}
-              onMouseEnter={() => setShowTooltip("export")}
-              onMouseLeave={() => setShowTooltip(null)}
-              title="Export chat"
-            >
-              ⬇️
-            </button>
-            {showTooltip === "export" && (
-              <div className={s.tooltip}>Export chat</div>
-            )}
-          </div>
+          ))}
         </div>
       </div>
 
@@ -195,9 +183,7 @@ export default function ChatArea({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        {search && (
-          <button className={s.clearBtn} onClick={() => setSearch("")}>✕</button>
-        )}
+        {search && <button className={s.clearBtn} onClick={() => setSearch("")}>✕</button>}
       </div>
 
       {/* ── Messages ── */}
@@ -212,20 +198,27 @@ export default function ChatArea({
           const showDateSep = !isSameDay(prevMsg?.timestamp, msg.timestamp);
           const dateLabel = formatDateLabel(msg.timestamp);
           const icon = typeIcon(msg.message_type);
+          const key = msg._id || msg.whatsapp_message_id || `${msg.timestamp}-${i}`;
+          const isNew = !seenKeys.has(key);
+          if (isNew) seenKeys.add(key);
+          const isUser = msg.direction === "user";
 
           return (
-            <React.Fragment key={msg._id || msg.whatsapp_message_id || i}>
+            <React.Fragment key={key}>
               {showDateSep && dateLabel && <DateSeparator label={dateLabel} />}
-              <div className={`${s.bubble} ${msg.direction === "user" ? s.bubbleUser : s.bubbleBot}`}>
-                <div className={s.bubbleBody}>
-                  {icon && <span className={s.typeIcon}>{icon}</span>}
-                  {msg.file_name && <span className={s.fileName}>{msg.file_name}</span>}
-                  <span>{msg.message || `[${msg.message_type} message]`}</span>
+              <div className={`${s.bubbleWrap} ${isUser ? s.bubbleWrapUser : s.bubbleWrapBot} ${isNew ? s.bubbleNew : ""}`}>
+                <div className={`${s.bubble} ${isUser ? s.bubbleUser : s.bubbleBot}`}>
+                  <div className={s.bubbleBody}>
+                    {icon && <span className={s.typeIcon}>{icon}</span>}
+                    {msg.file_name && <span className={s.fileName}>{msg.file_name}</span>}
+                    <span>{msg.message || `[${msg.message_type} message]`}</span>
+                  </div>
                 </div>
-                <div className={s.bubbleMeta}>
+                {/* Time always outside and below — fixed position regardless of text length */}
+                <div className={`${s.bubbleTime} ${isUser ? s.bubbleTimeUser : s.bubbleTimeBot}`}>
                   {msg.timestamp && new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                  {msg.direction === "bot" && (
-                    <span style={{ marginLeft: 4, color: statusColor(msg.status), fontSize: 12, fontWeight: "bold" }}>
+                  {!isUser && (
+                    <span style={{ marginLeft: 4, color: statusColor(msg.status), fontSize: 11, fontWeight: "bold" }}>
                       {statusIcon(msg.status)}
                     </span>
                   )}
@@ -235,6 +228,7 @@ export default function ChatArea({
           );
         })}
 
+        {/* Typing bubble — left side, only for incoming (user typing) */}
         {typing && <TypingBubble />}
         <div ref={endRef} />
       </div>
@@ -248,25 +242,16 @@ export default function ChatArea({
           accept="image/*,application/pdf,audio/*,.doc,.docx,.txt"
           onChange={(e) => setFile(e.target.files[0])}
         />
-        <button
-          className={s.attachBtn}
-          onClick={() => fileRef.current?.click()}
-          title="Attach file"
-        >
+        <button className={s.attachBtn} onClick={() => fileRef.current?.click()} title="Attach file">
           📎
         </button>
-        {file && (
+        {file ? (
           <div className={s.filePreview}>
             <span className={s.filePreviewName}>{file.name}</span>
-            <button className={s.filePreviewSend} onClick={handleFile} disabled={sending}>
-              Send
-            </button>
-            <button className={s.filePreviewCancel} onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = ""; }}>
-              ✕
-            </button>
+            <button className={s.filePreviewSend} onClick={handleFile} disabled={sending}>Send</button>
+            <button className={s.filePreviewCancel} onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = ""; }}>✕</button>
           </div>
-        )}
-        {!file && (
+        ) : (
           <>
             <input
               className={s.textInput}
@@ -276,11 +261,7 @@ export default function ChatArea({
               placeholder="Type a message..."
               disabled={sending}
             />
-            <button
-              className={s.sendBtn}
-              onClick={handleSend}
-              disabled={sending || !text.trim()}
-            >
+            <button className={s.sendBtn} onClick={handleSend} disabled={sending || !text.trim()}>
               {sending ? "..." : "Send"}
             </button>
           </>

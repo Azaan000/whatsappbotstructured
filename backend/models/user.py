@@ -3,7 +3,6 @@ from models.database import get_db
 
 
 def save_user(phone, socketio, name=""):
-    """Insert user if new; always update last_seen. Returns True if new user."""
     conn = get_db()
     cursor = conn.cursor()
     try:
@@ -68,11 +67,9 @@ def toggle_user_mode(phone, socketio):
         row = cursor.fetchone()
         if not row:
             return None
-
         new_mode = 0 if row["human_mode"] == 1 else 1
         cursor.execute("UPDATE users SET human_mode=? WHERE phone=?", (new_mode, phone))
         conn.commit()
-
         socketio.emit("mode_changed", {"phone": phone, "human_mode": new_mode})
         print(f"User {phone} -> {'HUMAN' if new_mode else 'AI'} mode")
         return new_mode
@@ -104,7 +101,8 @@ def get_all_users():
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            SELECT u.phone, u.name, u.human_mode, u.tags, u.notes, u.total_messages, u.last_seen,
+            SELECT u.phone, u.name, u.human_mode, u.tags, u.notes,
+                   u.total_messages, u.first_seen, u.last_seen,
                    (SELECT message FROM messages m
                     WHERE m.phone = u.phone ORDER BY id DESC LIMIT 1) AS last_message
             FROM users u
@@ -119,6 +117,7 @@ def get_all_users():
                 "tags": r["tags"] or "",
                 "notes": r["notes"] or "",
                 "total_messages": r["total_messages"] or 0,
+                "first_seen": r["first_seen"] or "",
                 "last_seen": r["last_seen"],
                 "last": r["last_message"] or "No messages",
             }
