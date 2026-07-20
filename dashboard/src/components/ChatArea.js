@@ -8,7 +8,6 @@ function statusColor(status) {
   return { read: "#ffffff", delivered: "#c8e6ff", sent: "#a0c4ff", failed: "#ff6b6b" }[status] || "#a0c4ff";
 }
 function typeIcon(type) {
-  // Only show icon for non-text types
   return { image: "🖼", audio: "🎵", document: "📄", video: "🎬", file: "📎" }[type] || null;
 }
 
@@ -20,7 +19,6 @@ function formatDateLabel(timestamp) {
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
   const msgDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-
   if (msgDate.getTime() === today.getTime()) return "Today";
   if (msgDate.getTime() === yesterday.getTime()) return "Yesterday";
   return date.toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" });
@@ -30,11 +28,7 @@ function isSameDay(ts1, ts2) {
   if (!ts1 || !ts2) return false;
   const a = new Date(ts1);
   const b = new Date(ts2);
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
 function DateSeparator({ label }) {
@@ -66,6 +60,7 @@ export default function ChatArea({
   const [text, setText] = useState("");
   const [search, setSearch] = useState("");
   const [file, setFile] = useState(null);
+  const [showTooltip, setShowTooltip] = useState(null);
   const endRef = useRef(null);
   const fileRef = useRef(null);
 
@@ -102,35 +97,97 @@ export default function ChatArea({
 
   return (
     <div className={s.chat}>
-      {/* Header */}
+
+      {/* ── Header ── */}
       <div className={s.header}>
-        <div>
-          <h3 className={s.headerPhone}>
-            {user.name || user.phone}
-            {user.name && (
-              <span style={{ fontSize: 12, color: "#999", marginLeft: 8 }}>
-                ({user.phone})
+        <div className={s.headerLeft}>
+          {/* Avatar */}
+          <div className={s.headerAvatar} style={{ background: user.human_mode ? "#ff9800" : "#667eea" }}>
+            {(user.name || user.phone).charAt(0).toUpperCase()}
+          </div>
+          {/* Name + meta */}
+          <div>
+            <div className={s.headerName}>
+              {user.name || user.phone}
+              {user.name && (
+                <span className={s.headerPhone}>({user.phone})</span>
+              )}
+            </div>
+            <div className={s.headerMeta}>
+              <span
+                className={s.modePill}
+                style={{
+                  background: user.human_mode ? "#fff3e0" : "#e8f5e9",
+                  color: user.human_mode ? "#e65100" : "#2e7d32",
+                }}
+              >
+                <span
+                  className={s.modePillDot}
+                  style={{ background: user.human_mode ? "#ff9800" : "#4caf50" }}
+                />
+                {user.human_mode ? "Human mode" : "AI mode"}
               </span>
-            )}
-          </h3>
-          <div className={s.headerMeta}>
-            <span style={{ color: user.human_mode ? "#ff9800" : "#0b5cff", fontSize: 12 }}>
-              {user.human_mode ? "Human mode" : "AI mode"}
-            </span>
-            {user.tags && <span className={s.tagBadge}>{user.tags}</span>}
-            <span className={s.msgCount}>{user.total_messages} messages</span>
+              {user.tags && <span className={s.tagBadge}>{user.tags}</span>}
+              <span className={s.msgCount}>{user.total_messages} messages</span>
+            </div>
           </div>
         </div>
-        <div className={s.headerBtns}>
-          <button className={s.btnPrimary} onClick={onToggleMode}>
-            {user.human_mode ? "Switch to AI" : "Switch to Human"}
-          </button>
-          <button className={s.btnWarn} onClick={onEdit}>Edit</button>
-          <button className={s.btnSuccess} onClick={onExport}>Export</button>
+
+        {/* ── Icon buttons ── */}
+        <div className={s.headerActions}>
+          {/* Toggle mode */}
+          <div className={s.iconBtnWrap}>
+            <button
+              className={s.iconBtn}
+              onClick={onToggleMode}
+              onMouseEnter={() => setShowTooltip("toggle")}
+              onMouseLeave={() => setShowTooltip(null)}
+              title={user.human_mode ? "Switch to AI mode" : "Switch to Human mode"}
+            >
+              {user.human_mode ? "🤖" : "👤"}
+            </button>
+            {showTooltip === "toggle" && (
+              <div className={s.tooltip}>
+                {user.human_mode ? "Switch to AI" : "Switch to Human"}
+              </div>
+            )}
+          </div>
+
+          {/* Edit */}
+          <div className={s.iconBtnWrap}>
+            <button
+              className={s.iconBtn}
+              onClick={onEdit}
+              onMouseEnter={() => setShowTooltip("edit")}
+              onMouseLeave={() => setShowTooltip(null)}
+              title="Edit user"
+            >
+              ✏️
+            </button>
+            {showTooltip === "edit" && (
+              <div className={s.tooltip}>Edit user</div>
+            )}
+          </div>
+
+          {/* Export */}
+          <div className={s.iconBtnWrap}>
+            <button
+              className={s.iconBtn}
+              onClick={onExport}
+              onMouseEnter={() => setShowTooltip("export")}
+              onMouseLeave={() => setShowTooltip(null)}
+              title="Export chat"
+            >
+              ⬇️
+            </button>
+            {showTooltip === "export" && (
+              <div className={s.tooltip}>Export chat</div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Search */}
+      {/* ── Search ── */}
       <div className={s.searchBar}>
         <input
           className={s.searchInput}
@@ -143,7 +200,7 @@ export default function ChatArea({
         )}
       </div>
 
-      {/* Messages */}
+      {/* ── Messages ── */}
       <div className={s.messages}>
         {loading && <div className={s.loading}>Loading...</div>}
         {!loading && filtered.length === 0 && (
@@ -155,17 +212,13 @@ export default function ChatArea({
           const showDateSep = !isSameDay(prevMsg?.timestamp, msg.timestamp);
           const dateLabel = formatDateLabel(msg.timestamp);
           const icon = typeIcon(msg.message_type);
-          const isText = !icon; // no icon means it's a plain text message
 
           return (
             <React.Fragment key={msg._id || msg.whatsapp_message_id || i}>
               {showDateSep && dateLabel && <DateSeparator label={dateLabel} />}
-              <div
-                className={`${s.bubble} ${msg.direction === "user" ? s.bubbleUser : s.bubbleBot}`}
-              >
+              <div className={`${s.bubble} ${msg.direction === "user" ? s.bubbleUser : s.bubbleBot}`}>
                 <div className={s.bubbleBody}>
-                  {/* Only show icon for non-text messages */}
-                  {!isText && <span className={s.typeIcon}>{icon}</span>}
+                  {icon && <span className={s.typeIcon}>{icon}</span>}
                   {msg.file_name && <span className={s.fileName}>{msg.file_name}</span>}
                   <span>{msg.message || `[${msg.message_type} message]`}</span>
                 </div>
@@ -186,35 +239,52 @@ export default function ChatArea({
         <div ref={endRef} />
       </div>
 
-      {/* Input */}
+      {/* ── Input ── */}
       <div className={s.inputArea}>
         <input
           type="file"
           ref={fileRef}
-          className={s.fileInput}
+          className={s.fileInputHidden}
           accept="image/*,application/pdf,audio/*,.doc,.docx,.txt"
           onChange={(e) => setFile(e.target.files[0])}
         />
-        {file && (
-          <button className={s.sendFileBtn} onClick={handleFile} disabled={sending}>
-            Send: {file.name}
-          </button>
-        )}
-        <input
-          className={s.textInput}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
-          placeholder="Type a message..."
-          disabled={sending}
-        />
         <button
-          className={s.sendBtn}
-          onClick={handleSend}
-          disabled={sending || !text.trim()}
+          className={s.attachBtn}
+          onClick={() => fileRef.current?.click()}
+          title="Attach file"
         >
-          {sending ? "..." : "Send"}
+          📎
         </button>
+        {file && (
+          <div className={s.filePreview}>
+            <span className={s.filePreviewName}>{file.name}</span>
+            <button className={s.filePreviewSend} onClick={handleFile} disabled={sending}>
+              Send
+            </button>
+            <button className={s.filePreviewCancel} onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = ""; }}>
+              ✕
+            </button>
+          </div>
+        )}
+        {!file && (
+          <>
+            <input
+              className={s.textInput}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSend()}
+              placeholder="Type a message..."
+              disabled={sending}
+            />
+            <button
+              className={s.sendBtn}
+              onClick={handleSend}
+              disabled={sending || !text.trim()}
+            >
+              {sending ? "..." : "Send"}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

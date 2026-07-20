@@ -3,16 +3,10 @@ from models.database import get_db
 
 
 def save_message(
-    phone,
-    message,
-    direction,
-    socketio,
-    status="sent",
-    message_type="text",
-    media_path=None,
-    file_name=None,
-    whatsapp_message_id=None,
-    source="",
+    phone, message, direction, socketio,
+    status="sent", message_type="text",
+    media_path=None, file_name=None,
+    whatsapp_message_id=None, source="",
 ):
     conn = get_db()
     cursor = conn.cursor()
@@ -27,7 +21,6 @@ def save_message(
              message_type, media_path, file_name, whatsapp_message_id),
         )
         msg_id = cursor.lastrowid
-
         cursor.execute(
             "UPDATE users SET total_messages = total_messages + 1, last_seen=? WHERE phone=?",
             (now, phone),
@@ -37,15 +30,17 @@ def save_message(
         cursor.execute("SELECT * FROM users WHERE phone=?", (phone,))
         user = cursor.fetchone()
 
+        # Emit with whatsapp_message_id so frontend can match and update status
         socketio.emit("new_message", {
             "phone": phone,
-            "message": message,
+            "message": message or "",
             "direction": direction,
             "status": status,
             "timestamp": now,
-            "message_type": message_type,
-            "file_name": file_name,
+            "message_type": message_type or "text",
+            "file_name": file_name or "",
             "msg_id": msg_id,
+            "whatsapp_message_id": whatsapp_message_id or "",
             "source": source,
         })
 
@@ -76,13 +71,11 @@ def update_message_status(whatsapp_message_id, status, socketio):
             (whatsapp_message_id,),
         )
         row = cursor.fetchone()
-
         cursor.execute(
             "UPDATE messages SET status=? WHERE whatsapp_message_id=?",
             (status, whatsapp_message_id),
         )
         conn.commit()
-
         if row:
             socketio.emit("status_update", {
                 "whatsapp_message_id": whatsapp_message_id,
@@ -115,7 +108,6 @@ def get_messages(phone, search=""):
                 (phone,),
             )
         rows = cursor.fetchall()
-        # Reverse so oldest is at top, newest at bottom
         rows = list(reversed(rows))
         return [
             {
@@ -125,8 +117,8 @@ def get_messages(phone, search=""):
                 "timestamp": r["timestamp"],
                 "message_type": r["message_type"] or "text",
                 "media_path": r["media_path"],
-                "file_name": r["file_name"],
-                "whatsapp_message_id": r["whatsapp_message_id"],
+                "file_name": r["file_name"] or "",
+                "whatsapp_message_id": r["whatsapp_message_id"] or "",
             }
             for r in rows
         ]

@@ -49,6 +49,9 @@ export default function App() {
   const consultationCount = unseenConsultPhones.size;
   const typingTimerRef = useRef(null);
 
+  // Track pending temp message _ids so we don't double-append socket confirms
+  const pendingTempIds = useRef(new Set());
+
   const [showBroadcast, setShowBroadcast] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showConsultations, setShowConsultations] = useState(false);
@@ -60,6 +63,8 @@ export default function App() {
     updateMessageStatus, updateTempStatus, removeMessage, selectedPhoneRef,
   } = useMessages(selectedPhone);
 
+  // ── Socket handlers ──────────────────────────────────────────────────────
+
   const handleNewUser = useCallback((data) => {
     setUsers((prev) => prev.find((u) => u.phone === data.phone) ? prev : [data, ...prev]);
     incrementUnread(data.phone);
@@ -67,54 +72,79 @@ export default function App() {
 
   const handleUserUpdate = useCallback((data) => {
     setUsers((prev) => prev.map((u) => u.phone === data.phone ? { ...u, ...data } : u));
-    if (selectedPhoneRef.current === data.phone) setSelectedUser((prev) => ({ ...prev, ...data }));
+    if (selectedPhoneRef.current === data.phone)
+      setSelectedUser((prev) => ({ ...prev, ...data }));
   }, [selectedPhoneRef]);
 
   const handleNewMessage = useCallback((data) => {
+    // Update sidebar
     setUsers((prev) => prev.map((u) =>
       u.phone === data.phone
         ? { ...u, last: data.message?.substring(0, 50), total_messages: (u.total_messages || 0) + 1, last_seen: data.timestamp }
         : u
     ));
+
     if (data.direction === "user") {
       incrementUnread(data.phone);
-      if (isConsultMessage(data.message)) {
+
+      // Consultation tracking — notify even for repeat requests
+      if (isConsultMessage(data.message) && selectedPhoneRef.current !== data.phone) {
         const seen = getSeenConsults();
-        if (!seen.has(data.phone) || selectedPhoneRef.current !== data.phone) {
-          seen.delete(data.phone);
-          saveSeenConsults(seen);
-          if (selectedPhoneRef.current !== data.phone) {
-            setUnseenConsultPhones((prev) => new Set(prev).add(data.phone));
-          }
-        }
+        seen.delete(data.phone); // always re-mark as unseen on new request
+        saveSeenConsults(seen);
+        setUnseenConsultPhones((prev) => new Set(prev).add(data.phone));
       }
     }
+
     if (selectedPhoneRef.current === data.phone) {
       setTyping(false);
       if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+
       if (data.direction === "bot" && data.source === "ai") {
         setTyping(true);
         typingTimerRef.current = setTimeout(() => setTyping(false), 1200);
       }
+
       if (data.direction === "user" || data.source === "ai") {
-        appendMessage({ message: data.message, direction: data.direction, status: data.status, timestamp: data.timestamp, message_type: data.message_type, file_name: data.file_name });
+        // Only append if not a dashboard-sent message (those are added optimistically)
+        appendMessage({
+          message: data.message,
+          direction: data.direction,
+          status: data.status,
+          timestamp: data.timestamp,
+          message_type: data.message_type || "text",
+          file_name: data.file_name || "",
+          whatsapp_message_id: data.whatsapp_message_id || "",
+        });
       }
+
+      // Update status for dashboard-sent messages via whatsapp_message_id
+      if (data.direction === "bot" && data.source !== "ai" && data.whatsapp_message_id) {
+        updateMessageStatus(data.whatsapp_message_id, data.status);
+      }
+
       if (data.direction === "user") markAsRead(data.phone);
     }
-  }, [selectedPhoneRef, incrementUnread, appendMessage, markAsRead]);
+  }, [selectedPhoneRef, incrementUnread, appendMessage, markAsRead, updateMessageStatus]);
 
   const handleStatusUpdate = useCallback((data) => {
     updateMessageStatus(data.whatsapp_message_id, data.status);
   }, [updateMessageStatus]);
 
   const handleModeChanged = useCallback((data) => {
-    setUsers((prev) => prev.map((u) => u.phone === data.phone ? { ...u, human_mode: data.human_mode } : u));
-    if (selectedPhoneRef.current === data.phone) setSelectedUser((prev) => ({ ...prev, human_mode: data.human_mode }));
+    setUsers((prev) => prev.map((u) =>
+      u.phone === data.phone ? { ...u, human_mode: data.human_mode } : u
+    ));
+    if (selectedPhoneRef.current === data.phone)
+      setSelectedUser((prev) => ({ ...prev, human_mode: data.human_mode }));
   }, [selectedPhoneRef]);
 
   const handleUserUpdated = useCallback((data) => {
-    setUsers((prev) => prev.map((u) => u.phone === data.phone ? { ...u, tags: data.tags, notes: data.notes } : u));
-    if (selectedPhoneRef.current === data.phone) setSelectedUser((prev) => ({ ...prev, tags: data.tags, notes: data.notes }));
+    setUsers((prev) => prev.map((u) =>
+      u.phone === data.phone ? { ...u, tags: data.tags, notes: data.notes } : u
+    ));
+    if (selectedPhoneRef.current === data.phone)
+      setSelectedUser((prev) => ({ ...prev, tags: data.tags, notes: data.notes }));
   }, [selectedPhoneRef]);
 
   const handleUserTyping = useCallback((data) => {
@@ -141,10 +171,14 @@ export default function App() {
     onUserTyping: handleUserTyping, onUserDeleted: handleUserDeletedSocket,
   });
 
+  // ── Initial load ─────────────────────────────────────────────────────────
+
   useEffect(() => {
     const load = async () => {
       try {
-        const [usersData, statsData, consults] = await Promise.all([api.getUsers(), api.getAnalytics(), api.getConsultations()]);
+        const [usersData, statsData, consults] = await Promise.all([
+          api.getUsers(), api.getAnalytics(), api.getConsultations(),
+        ]);
         setUsers(usersData);
         setStats(statsData);
         const seen = getSeenConsults();
@@ -162,6 +196,8 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
+  // ── User selection ───────────────────────────────────────────────────────
+
   const selectUser = useCallback((user) => {
     setSelectedPhone(user.phone);
     setSelectedUser(user);
@@ -173,43 +209,86 @@ export default function App() {
     setUnseenConsultPhones((prev) => { const n = new Set(prev); n.delete(user.phone); return n; });
   }, [loadMessages, markAsRead]);
 
+  // ── Send actions ─────────────────────────────────────────────────────────
+
   const handleSend = useCallback(async (text) => {
     if (!selectedPhone || sending) return;
     setSending(true);
-    const temp = { _id: Date.now(), message: text, direction: "bot", status: "sending", timestamp: new Date().toISOString(), message_type: "text" };
+    const tempId = Date.now();
+    const temp = {
+      _id: tempId,
+      message: text,
+      direction: "bot",
+      status: "sending",
+      timestamp: new Date().toISOString(),
+      message_type: "text",
+    };
+    pendingTempIds.current.add(tempId);
     appendMessage(temp);
-    try { await api.sendMessage(selectedPhone, text); updateTempStatus(temp._id, "sent"); }
-    catch { removeMessage(temp); alert("Failed to send message."); }
-    finally { setSending(false); }
+    try {
+      await api.sendMessage(selectedPhone, text);
+      updateTempStatus(tempId, "sent");
+    } catch {
+      removeMessage(temp);
+      alert("Failed to send message.");
+    } finally {
+      pendingTempIds.current.delete(tempId);
+      setSending(false);
+    }
   }, [selectedPhone, sending, appendMessage, removeMessage, updateTempStatus]);
 
   const handleSendFile = useCallback(async (file) => {
     if (!selectedPhone || sending) return;
     setSending(true);
-    const temp = { _id: Date.now(), message: file.name, direction: "bot", status: "sending", timestamp: new Date().toISOString(), message_type: "file", file_name: file.name };
+    const tempId = Date.now();
+    const temp = {
+      _id: tempId,
+      message: file.name,
+      direction: "bot",
+      status: "sending",
+      timestamp: new Date().toISOString(),
+      message_type: "file",
+      file_name: file.name,
+    };
+    pendingTempIds.current.add(tempId);
     appendMessage(temp);
-    try { await api.sendFile(selectedPhone, file); updateTempStatus(temp._id, "sent"); }
-    catch { removeMessage(temp); alert("Failed to send file."); }
-    finally { setSending(false); }
+    try {
+      await api.sendFile(selectedPhone, file);
+      updateTempStatus(tempId, "sent");
+    } catch {
+      removeMessage(temp);
+      alert("Failed to send file.");
+    } finally {
+      pendingTempIds.current.delete(tempId);
+      setSending(false);
+    }
   }, [selectedPhone, sending, appendMessage, removeMessage, updateTempStatus]);
+
+  // ── Toggle / edit ────────────────────────────────────────────────────────
 
   const handleToggleMode = useCallback(async () => {
     if (!selectedPhone) return;
     try {
       const data = await api.toggleMode(selectedPhone);
       setSelectedUser((prev) => ({ ...prev, human_mode: data.human_mode }));
-      setUsers((prev) => prev.map((u) => u.phone === selectedPhone ? { ...u, human_mode: data.human_mode } : u));
+      setUsers((prev) => prev.map((u) =>
+        u.phone === selectedPhone ? { ...u, human_mode: data.human_mode } : u
+      ));
     } catch (e) { console.error("Toggle failed:", e); }
   }, [selectedPhone]);
 
   const handleUserSaved = useCallback(({ tags, notes }) => {
     setSelectedUser((prev) => ({ ...prev, tags, notes }));
-    setUsers((prev) => prev.map((u) => u.phone === selectedPhone ? { ...u, tags, notes } : u));
+    setUsers((prev) => prev.map((u) =>
+      u.phone === selectedPhone ? { ...u, tags, notes } : u
+    ));
   }, [selectedPhone]);
 
   const handleMarkAllRead = useCallback(() => {
     users.forEach((u) => markAsRead(u.phone));
   }, [users, markAsRead]);
+
+  // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
@@ -223,9 +302,8 @@ export default function App() {
         </div>
       )}
 
-      {/* ── Top bar ── */}
+      {/* Top bar */}
       <div style={barStyle}>
-        {/* Stats — left */}
         <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
           <span style={statStyle}>👥 {stats.total_users || 0}</span>
           <span style={statStyle}>💬 {stats.total_messages || 0}</span>
@@ -235,10 +313,8 @@ export default function App() {
           <span style={statStyle}>⏱ {stats.avg_response_time || 0} min</span>
         </div>
 
-        {/* Divider */}
         <div style={{ width: 1, height: 20, background: "rgba(255,255,255,0.25)", flexShrink: 0 }} />
 
-        {/* Action buttons — right */}
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginLeft: "auto" }}>
           <button style={btnStyle("#fff", "#667eea")} onClick={() => setShowAnalytics(true)}>
             📊 Analytics
@@ -263,7 +339,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* Main layout */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <Sidebar
           users={users}
@@ -290,7 +365,6 @@ export default function App() {
         />
       </div>
 
-      {/* Connection dot */}
       <div style={{ position: "fixed", bottom: 12, right: 12, background: connected ? "#4caf50" : "#f44336", color: "#fff", padding: "4px 10px", borderRadius: 20, fontSize: 11, display: "flex", alignItems: "center", gap: 5, boxShadow: "0 2px 6px rgba(0,0,0,0.2)", zIndex: 999 }}>
         <span style={{ width: 7, height: 7, background: "#fff", borderRadius: "50%", animation: "pulse 1.2s infinite", display: "inline-block" }} />
         {connected ? "Live" : "Reconnecting…"}
@@ -312,7 +386,7 @@ const barStyle = {
 };
 const statStyle = { fontSize: 12, opacity: 0.92, fontWeight: 500, whiteSpace: "nowrap" };
 const btnStyle = (bg, color) => ({
-  padding: "5px 12px", background: bg, color, border: "none",
-  borderRadius: 20, cursor: "pointer", fontWeight: 600,
-  fontSize: 12, whiteSpace: "nowrap",
+  padding: "5px 12px", background: bg, color,
+  border: "none", borderRadius: 20, cursor: "pointer",
+  fontWeight: 600, fontSize: 12, whiteSpace: "nowrap",
 });
