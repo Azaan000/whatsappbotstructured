@@ -19,14 +19,15 @@ _user_service_context = {}  # tracks which service a user last selected
 
 CONTACT = "03003029093 / 03332454111"
 
-# ── Button responses ──────────────────────────────────────────────────────
+# ── Top-level overview responses (shown when a category has no sub-menu,
+#    or as an intro line before an interactive sub-menu is sent) ──────────
 
 BUTTON_RESPONSES = {
     # ── BizAdvise: Business Consultancy ──
     "biz_business": (
         "🏢 *Business Consultancy*\n\n"
         "We offer:\n"
-        "• Private Limited / SMC / LLC Registration\n"
+        "• Private Limited / SMC / LLC Registration (UK / USA)\n"
         "• Partnership / AOP Registration\n"
         "• Proprietorship Registration\n"
         "• Trademark & Copyright Registration\n"
@@ -47,8 +48,9 @@ BUTTON_RESPONSES = {
     "biz_tax": (
         "💰 *Taxation Services*\n\n"
         "We handle:\n"
-        "• NTN Registration (Individual: Rs.500 / 30 mins)\n"
-        "• Income Tax Returns (Salaried, Freelancer, Business, Company)\n"
+        "• NTN Registration — Individual (Rs.500 / 30 mins)\n"
+        "• NTN Registration — Business (Sole Proprietor / Partnership / Company)\n"
+        "• Income Tax Returns (Salaried, Freelancer, Business, Company, Overseas Pakistani)\n"
         "• Sales Tax Registration & Monthly Returns\n"
         "• Provincial Tax (SRB, PRA, BRA, KPRA)\n"
         "• ATL Status & Restoration\n"
@@ -64,7 +66,7 @@ BUTTON_RESPONSES = {
         "• Audited Accounts\n"
         "• Internal & External Audit\n"
         "• Financial Reporting (Monthly, Quarterly, Annual)\n"
-        "• Accounting Software (QuickBooks, Xero, Excel)\n\n"
+        "• Accounting Software (QuickBooks, Xero, Excel, Customized Solution)\n\n"
         "Our bookkeeping specialists can help you maintain accurate and up-to-date financial records.\n\n"
         f"Contact us: {CONTACT}"
     ),
@@ -76,7 +78,8 @@ BUTTON_RESPONSES = {
         "• Legal Notices (Recovery, Breach of Contract, Demand, Tenant)\n"
         "• Legal Opinions & Contract Reviews\n"
         "• Regulatory Compliance (SECP, FBR, IPO, Labour Laws)\n"
-        "• Company Secretarial Services\n\n"
+        "• Company Secretarial Services\n"
+        "• Legal Consultation (Startup, SME, Corporate Advisory, Business Risk Assessment)\n\n"
         "Our legal advisory specialists will assess your requirements and recommend the most suitable solution.\n\n"
         f"Contact us: {CONTACT}"
     ),
@@ -89,7 +92,8 @@ BUTTON_RESPONSES = {
         "• SEO (Search Engine Optimization)\n"
         "• Website Development\n"
         "• Content Writing\n"
-        "• Branding & Graphic Design\n\n"
+        "• Branding & Graphic Design\n"
+        "• Marketing Consultation\n\n"
         "Our digital marketing specialists will evaluate your business objectives and recommend the most effective strategy.\n\n"
         f"Contact us: {CONTACT}"
     ),
@@ -140,10 +144,331 @@ BUTTON_RESPONSES = {
     "contact_us": f"📞 *Contact Us:*\n\nOur team will be in touch with you shortly.\n\n📱 {CONTACT}\n\nPlease share your Name, Mobile Number, and Best Time to Call.",
 }
 
-SERVICE_MENU_IDS = {
-    "online_nikah", "court_marriage", "divorce_khula",
-    "child_custody", "maintenance", "property_law",
-    "inheritance", "corporate_law", "legal_docs"
+# ── LawAdvise sub-menus (Procedure / Documents-or-Timeline / Consult) ────
+
+TEXT_SUB_MENU = {
+    "online_nikah":   "You selected *Online Marriage / Online Nikah* 🕌\n\nReply with:\n1️⃣ Procedure\n2️⃣ Documents\n3️⃣ Talk to a Lawyer",
+    "court_marriage": "You selected *Court Marriage* 💍\n\nReply with:\n1️⃣ Procedure\n2️⃣ Documents\n3️⃣ Book Consultation",
+    "divorce_khula":  "You selected *Divorce / Khula* 📄\n\nReply with:\n1️⃣ Procedure\n2️⃣ Timeline\n3️⃣ Book Consultation",
+    "child_custody":  "You selected *Child Custody / Guardianship* 👶\n\nReply with:\n1️⃣ Procedure\n2️⃣ Timeline\n3️⃣ Talk to Expert",
+    "maintenance":    "You selected *Maintenance / Dowery* 💰\n\nReply with:\n1️⃣ Procedure\n2️⃣ Timeline\n3️⃣ Talk to Expert",
+    "property_law":   "You selected *Property Law* 🏠\n\nReply with:\n1️⃣ Procedure\n2️⃣ Timeline\n3️⃣ Book Consultation",
+    "inheritance":    "You selected *Inheritance* 📜\n\nReply with:\n1️⃣ Procedure\n2️⃣ Timeline\n3️⃣ Talk to Expert",
+    "corporate_law":  "You selected *Corporate Law* 🤝\n\nReply with:\n1️⃣ Procedure\n2️⃣ Timeline\n3️⃣ Talk to Expert",
+    "legal_docs":     "You selected *Legal Documentation* 📑\n\nReply with:\n1️⃣ Procedure\n2️⃣ Timeline\n3️⃣ Book Consultation",
+}
+
+TEXT_SUB_RESPONSES = {
+    "online_nikah":   {"1": BUTTON_RESPONSES["nikah_procedure"],    "2": BUTTON_RESPONSES["nikah_documents"],       "3": BUTTON_RESPONSES["nikah_consult"]},
+    "court_marriage": {"1": BUTTON_RESPONSES["court_procedure"],    "2": BUTTON_RESPONSES["court_documents"],       "3": BUTTON_RESPONSES["court_consult"]},
+    "divorce_khula":  {"1": BUTTON_RESPONSES["divorce_procedure"],  "2": BUTTON_RESPONSES["divorce_timeline"],      "3": BUTTON_RESPONSES["divorce_consult"]},
+    "child_custody":  {"1": BUTTON_RESPONSES["custody_procedure"],  "2": BUTTON_RESPONSES["custody_timeline"],      "3": BUTTON_RESPONSES["custody_consult"]},
+    "maintenance":    {"1": BUTTON_RESPONSES["maintenance_procedure"], "2": BUTTON_RESPONSES["maintenance_timeline"],"3": BUTTON_RESPONSES["maintenance_consult"]},
+    "property_law":   {"1": BUTTON_RESPONSES["property_procedure"], "2": BUTTON_RESPONSES["property_timeline"],     "3": BUTTON_RESPONSES["property_consult"]},
+    "inheritance":    {"1": BUTTON_RESPONSES["inheritance_procedure"],"2": BUTTON_RESPONSES["inheritance_timeline"],"3": BUTTON_RESPONSES["inheritance_consult"]},
+    "corporate_law":  {"1": BUTTON_RESPONSES["corporate_procedure"],"2": BUTTON_RESPONSES["corporate_timeline"],   "3": BUTTON_RESPONSES["corporate_consult"]},
+    "legal_docs":     {"1": BUTTON_RESPONSES["docs_procedure"],     "2": BUTTON_RESPONSES["docs_timeline"],         "3": BUTTON_RESPONSES["docs_consult"]},
+}
+
+# ── BizAdvise sub-menus ────────────────────────────────────────────────
+# Business Registration, Taxation, Accountancy, and Corporate Legal Advisory
+# each bundle several distinct services with their own required documents /
+# cost / timeline, so — same as LawAdvise — they get a numbered sub-menu
+# instead of one giant reply.
+
+BIZ_SUB_MENU = {
+    "biz_business": (
+        "🏢 *Business Consultancy* — which registration do you need?\n\n"
+        "1️⃣ Private Limited / SMC / LLC (UK / USA)\n"
+        "2️⃣ Partnership Firm / AOP\n"
+        "3️⃣ Proprietorship\n"
+        "4️⃣ Trademark Registration\n"
+        "5️⃣ Copyright Registration\n"
+        "6️⃣ Patent Registration\n"
+        "7️⃣ Other Registrations (KCCI / PEC / DTS / PSEB)\n"
+        "8️⃣ Talk to an Expert"
+    ),
+    "biz_tax": (
+        "💰 *Taxation Services* — which service do you need?\n\n"
+        "1️⃣ NTN Registration — Individual\n"
+        "2️⃣ NTN Registration — Business\n"
+        "3️⃣ Income Tax Return\n"
+        "4️⃣ Sales Tax Registration\n"
+        "5️⃣ Sales Tax Monthly Return\n"
+        "6️⃣ Provincial Sales Tax (SRB/PRA/BRA/KPRA)\n"
+        "7️⃣ ATL (Active Taxpayer List)\n"
+        "8️⃣ Tax Notices\n"
+        "9️⃣ Tax Refund\n"
+        "🔟 Talk to an Expert"
+    ),
+    "biz_accounts": (
+        "📊 *Accountancy Services* — which service do you need?\n\n"
+        "1️⃣ Bookkeeping\n"
+        "2️⃣ Annual Accounts Management\n"
+        "3️⃣ Audited Accounts\n"
+        "4️⃣ Internal & External Audit\n"
+        "5️⃣ Financial Reporting\n"
+        "6️⃣ Accounting Consultation\n"
+        "7️⃣ Talk to an Expert"
+    ),
+    "biz_legal": (
+        "⚖️ *Corporate Legal Advisory* — which service do you need?\n\n"
+        "1️⃣ Contract Drafting\n"
+        "2️⃣ Corporate Compliance\n"
+        "3️⃣ Legal Notices\n"
+        "4️⃣ Legal Opinions\n"
+        "5️⃣ Regulatory Compliance\n"
+        "6️⃣ Company Secretarial Services\n"
+        "7️⃣ Legal Consultation\n"
+        "8️⃣ Talk to an Expert"
+    ),
+}
+
+BIZ_SUB_RESPONSES = {
+    "biz_business": {
+        "1": (
+            "🏢 *Private Limited / SMC / LLC Registration (UK / USA)*\n\n"
+            "Company Types: Private Limited Company, Single Member Company (SMC), "
+            "LLC Registration (UK / USA)\n\n"
+            "Required Documents:\n"
+            "• Director CNIC\n• Shareholder Details\n• Company Name\n• Office Address\n"
+            "• Business Activity\n• Contact Number\n• Email Address\n\n"
+            "Cost: May vary case to case\nTimeline: May vary case to case\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "2": (
+            "🏢 *Partnership Firm / AOP Registration*\n\n"
+            "Required Documents:\n"
+            "• Director CNIC\n• Shareholder Details\n• Company Name\n• Office Address\n"
+            "• Business Activity\n• Contact Number\n• Email Address\n\n"
+            "Cost: May vary case to case\nTimeline: May vary case to case\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "3": (
+            "🏢 *Proprietorship Registration*\n\n"
+            "Required Documents:\n"
+            "• CNIC\n• Mobile Number\n• Business Address\n• Nature of Business\n• Email Address\n\n"
+            "Cost: May vary case to case\nTimeline: May vary case to case\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "4": (
+            "™️ *Trademark Registration*\n\nRegister your Brand Name or Logo.\n\n"
+            "Required Documents:\n"
+            "• Applicant CNIC\n• Brand Name\n• Logo (Optional)\n• Business Details\n\n"
+            "Cost: May vary case to case\nTimeline: May vary case to case\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "5": (
+            "©️ *Copyright Registration*\n\nWhat can be registered: Literary Work, Software, Music\n\n"
+            "Required Documents:\n"
+            "• Business Registration Documents\n• Utility Bill\n• Owner's CNIC\n\n"
+            "Cost: May vary case to case\nTimeline: May vary case to case\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "6": (
+            "📜 *Patent Registration*\n\n"
+            "Required Documents:\n"
+            "• Business Registration Documents\n• Utility Bill\n• Owner's CNIC\n\n"
+            "Cost: May vary case to case\nTimeline: May vary case to case\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "7": (
+            "🏛️ *Other Registrations — KCCI / PEC / DTS / PSEB*\n\n"
+            "*KCCI Registration*\n"
+            "Required: Business Registration Documents, Account Maintenance Certificate, "
+            "Utility Bill, Owner's CNIC/Photo, Latest Tax Return\n\n"
+            "*PEC Registration*\n"
+            "Required: Business Registration Documents, Account Maintenance Certificate, "
+            "Utility Bill, Owner's CNIC/Photo, PEC Registered Engineer\n\n"
+            "*DTS Registration*\n"
+            "Required: Business Registration Documents, Account Maintenance Certificate, "
+            "Utility Bill, Owner's CNIC/Photo, At least 800CC vehicle in name of owner or "
+            "business, Bank Guarantee\n\n"
+            "*PSEB Registration*\n"
+            "Required: Business Registration Documents, Account Maintenance Certificate, "
+            "Utility Bill, Owner's CNIC/Photo\n\n"
+            "Cost: May vary case to case\n\n"
+            f"Let us know which one you need and contact us: {CONTACT}"
+        ),
+        "8": BUTTON_RESPONSES["biz_consult"],
+    },
+    "biz_tax": {
+        "1": (
+            "💰 *NTN Registration — Individual*\n\n"
+            "Required Documents:\n• Copy of CNIC\n• Email Address\n• Contact Number\n\n"
+            "Cost: Rs. 500\nTimeline: 30 minutes\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "2": (
+            "💰 *NTN Registration — Business (Sole Proprietor / Partnership / Company)*\n\n"
+            "Required Documents:\n"
+            "• Business Registration Documents\n• Account Maintenance Certificate\n"
+            "• Utility Bill\n• Owner's CNIC\n• Contact Information\n\n"
+            "Cost: May vary case to case\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "3": (
+            "🧾 *Income Tax Return*\n\n"
+            "Types: Salaried Individual, Freelancer, Business Owner, Partnership Firm, "
+            "Company, Overseas Pakistani\n\n"
+            "• Salaried Individual: Salary Slip, Details of Assets\n"
+            "• Freelancer: Bank Statement, Source of Income, Details of Assets\n"
+            "• Business Owner: Bank Statement, Source of Income, Details of Assets\n"
+            "• Business Tax Return: Bank Statement, Business Internal Accounts, "
+            "Details of Expenses, Tax Deduction Certificates, Details of Assets in name of business\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "4": (
+            "🧾 *Sales Tax Registration*\n\n"
+            "Required Documents:\n"
+            "• Business Registration Documents\n• Account Maintenance Certificate\n"
+            "• Utility Bill\n• Owner's CNIC\n• Rent Agreement/Ownership Document\n• Contact Details\n\n"
+            "Cost: May vary case to case\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "5": (
+            "🧾 *Sales Tax Monthly Return*\n\n"
+            "Requirement: Details of invoices generated in the last month\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "6": (
+            "🧾 *Provincial Sales Tax (SRB, PRA, BRA, KPRA)*\n\n"
+            "Same requirements as Sales Tax Registration.\n\n"
+            "Required Documents:\n"
+            "• Business Registration Documents\n• Account Maintenance Certificate\n"
+            "• Utility Bill\n• Owner's CNIC/Photo\n\n"
+            "Cost: May vary case to case\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "7": (
+            "📋 *ATL (Active Taxpayer List)*\n\n"
+            "• Check ATL Status: Consult our specialist\n"
+            "• Become Active Taxpayer: Consult our specialist\n"
+            "• ATL Restoration: Consult our specialist\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "8": (
+            "📩 *Tax Notices*\n\n"
+            "FBR Notice, Audit Notice, ATL Notice, Section 114, Section 122, Section 111, "
+            "Reply to Notice — all require consultation with our tax experts.\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "9": (
+            "💵 *Tax Refund*\n\n"
+            "Requires consultation with our tax experts.\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "10": BUTTON_RESPONSES["biz_consult"],
+    },
+    "biz_accounts": {
+        "1": (
+            "📊 *Bookkeeping*\n\n"
+            "Services: Sales Recording, Purchase Recording, Cash Book, Bank Reconciliation, "
+            "Accounts Receivable, Accounts Payable, General Ledger, Expense Management, "
+            "Inventory Recording, Financial Reports\n\n"
+            "Our bookkeeping specialists can help you maintain accurate and up-to-date financial records.\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "2": (
+            "📊 *Annual Accounts Management*\n\n"
+            "Includes: Profit & Loss Account, Balance Sheet, Cash Flow Statement, Trial Balance, "
+            "General Ledger Review, Financial Statements\n\n"
+            "Cost: May vary case to case\nTimeline: May vary case to case\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "3": (
+            "📊 *Audited Accounts*\n\n"
+            "Who needs an audit: Private Limited Company, NGO, Trust, Large Business, "
+            "Statutory Requirement, Voluntary Audit\n\n"
+            "Cost: May vary case to case\nTimeline: May vary case to case\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "4": (
+            "📊 *Internal & External Audit*\n\n"
+            "Internal Audit covers: Risk Assessment, Internal Controls, Compliance Review, "
+            "Operational Review, Audit Report\n\n"
+            "External Audit covers: Independent Audit, Financial Verification, Statutory Compliance, "
+            "Audit Opinion, Final Report\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "5": (
+            "📊 *Financial Reporting*\n\n"
+            "Types: Monthly Reports, Quarterly Reports, Annual Reports, Management Reports, Custom Reports\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "6": (
+            "📊 *Accounting Consultation*\n\n"
+            "Services: Business Accounting, Startup Accounting, Accounting System Setup, "
+            "Accounting Software (QuickBooks, Xero, Excel, Customized Solution), Financial Health Check\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "7": BUTTON_RESPONSES["biz_consult"],
+    },
+    "biz_legal": {
+        "1": (
+            "⚖️ *Contract Drafting*\n\n"
+            "Types: Business Contracts, Partnership Contracts, Employment Contracts, "
+            "Service Agreements, NDA, MoU\n\n"
+            "Cost: May vary case to case\nTimeline: May vary case to case\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "2": (
+            "⚖️ *Corporate Compliance*\n\n"
+            "Services: SECP Compliance, Company Annual Returns, Board Resolutions, Share Transfer, "
+            "Director Changes, Company Record Updates, Compliance Calendar\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "3": (
+            "⚖️ *Legal Notices*\n\n"
+            "Types: Recovery Notice, Breach of Contract Notice, Legal Demand Notice, "
+            "Employee Notice, Tenant Notice, Commercial Notice\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "4": (
+            "⚖️ *Legal Opinions*\n\n"
+            "Types: Business Legal Opinion, Contract Review, Compliance Opinion, "
+            "Investment Opinion, Property Related Opinion\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "5": (
+            "⚖️ *Regulatory Compliance*\n\n"
+            "Areas: SECP, FBR, IPO Pakistan, Labour Laws, Corporate Governance, Compliance Advisory\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "6": (
+            "⚖️ *Company Secretarial Services*\n\n"
+            "Services: Statutory Registers, Board Meeting Minutes, Share Certificates, "
+            "Annual Returns, Corporate Resolutions, Company Record Maintenance\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "7": (
+            "⚖️ *Legal Consultation*\n\n"
+            "Types: Startup Legal Advice, SME Legal Advice, Corporate Advisory, "
+            "Compliance Consultation, Contract Review, Business Risk Assessment\n\n"
+            f"Contact us: {CONTACT}"
+        ),
+        "8": BUTTON_RESPONSES["biz_consult"],
+    },
+}
+
+# ── Merge LawAdvise + BizAdvise sub-menu structures ───────────────────────
+# Any category in ALL_SUB_MENUS gets a numbered sub-menu instead of an
+# instant reply. Categories NOT in here (NGO, Digital Marketing, Urgent
+# Help, direct contact) already carry all their info in one BUTTON_RESPONSES
+# block, so they don't need a sub-menu.
+
+ALL_SUB_MENUS = {**TEXT_SUB_MENU, **BIZ_SUB_MENU}
+ALL_SUB_RESPONSES = {**TEXT_SUB_RESPONSES, **BIZ_SUB_RESPONSES}
+
+SERVICE_MENU_IDS = set(ALL_SUB_MENUS.keys())
+# = {"online_nikah", "court_marriage", "divorce_khula", "child_custody",
+#    "maintenance", "property_law", "inheritance", "corporate_law", "legal_docs",
+#    "biz_business", "biz_tax", "biz_accounts", "biz_legal"}
+
+# BizAdvise / general services that respond directly from BUTTON_RESPONSES —
+# no sub-menu needed because there's nothing further to break out.
+BIZ_DIRECT_IDS = {
+    "biz_ngo", "biz_digital", "biz_urgent", "biz_consult", "contact_us"
 }
 
 # ── Text menus (fallback) ─────────────────────────────────────────────────
@@ -170,7 +495,8 @@ TEXT_MAIN_MENU_2 = """*LawAdvise Services:*
 1️⃣3️⃣ Property Law
 1️⃣4️⃣ Inheritance
 1️⃣5️⃣ Legal Documentation
-1️⃣6️⃣ 👨‍💼 Talk to an Expert
+1️⃣6️⃣ Corporate Law
+1️⃣7️⃣ 👨‍💼 Talk to an Expert
 
 _Reply with a number to get started._"""
 
@@ -190,37 +516,8 @@ TEXT_SERVICE_MENUS = {
     "13": ("Property Law", "property_law"),
     "14": ("Inheritance", "inheritance"),
     "15": ("Legal Documentation", "legal_docs"),
-    "16": ("Talk to an Expert", "contact_us"),
-}
-
-# BizAdvise services respond directly from BUTTON_RESPONSES — no sub-menu needed
-BIZ_DIRECT_IDS = {
-    "biz_business", "biz_ngo", "biz_tax", "biz_accounts",
-    "biz_legal", "biz_digital", "biz_urgent", "biz_consult", "contact_us"
-}
-
-TEXT_SUB_MENU = {
-    "online_nikah":   "You selected *Online Marriage / Online Nikah* 🕌\n\nReply with:\n1️⃣ Procedure\n2️⃣ Documents\n3️⃣ Talk to a Lawyer",
-    "court_marriage": "You selected *Court Marriage* 💍\n\nReply with:\n1️⃣ Procedure\n2️⃣ Documents\n3️⃣ Book Consultation",
-    "divorce_khula":  "You selected *Divorce / Khula* 📄\n\nReply with:\n1️⃣ Procedure\n2️⃣ Timeline\n3️⃣ Book Consultation",
-    "child_custody":  "You selected *Child Custody / Guardianship* 👶\n\nReply with:\n1️⃣ Procedure\n2️⃣ Timeline\n3️⃣ Talk to Expert",
-    "maintenance":    "You selected *Maintenance / Dowery* 💰\n\nReply with:\n1️⃣ Procedure\n2️⃣ Timeline\n3️⃣ Talk to Expert",
-    "property_law":   "You selected *Property Law* 🏠\n\nReply with:\n1️⃣ Procedure\n2️⃣ Timeline\n3️⃣ Book Consultation",
-    "inheritance":    "You selected *Inheritance* 📜\n\nReply with:\n1️⃣ Procedure\n2️⃣ Timeline\n3️⃣ Talk to Expert",
-    "corporate_law":  "You selected *Corporate Law* 🤝\n\nReply with:\n1️⃣ Procedure\n2️⃣ Timeline\n3️⃣ Talk to Expert",
-    "legal_docs":     "You selected *Legal Documentation* 📑\n\nReply with:\n1️⃣ Procedure\n2️⃣ Timeline\n3️⃣ Book Consultation",
-}
-
-TEXT_SUB_RESPONSES = {
-    "online_nikah":   {"1": BUTTON_RESPONSES["nikah_procedure"],    "2": BUTTON_RESPONSES["nikah_documents"],       "3": BUTTON_RESPONSES["nikah_consult"]},
-    "court_marriage": {"1": BUTTON_RESPONSES["court_procedure"],    "2": BUTTON_RESPONSES["court_documents"],       "3": BUTTON_RESPONSES["court_consult"]},
-    "divorce_khula":  {"1": BUTTON_RESPONSES["divorce_procedure"],  "2": BUTTON_RESPONSES["divorce_timeline"],      "3": BUTTON_RESPONSES["divorce_consult"]},
-    "child_custody":  {"1": BUTTON_RESPONSES["custody_procedure"],  "2": BUTTON_RESPONSES["custody_timeline"],      "3": BUTTON_RESPONSES["custody_consult"]},
-    "maintenance":    {"1": BUTTON_RESPONSES["maintenance_procedure"], "2": BUTTON_RESPONSES["maintenance_timeline"],"3": BUTTON_RESPONSES["maintenance_consult"]},
-    "property_law":   {"1": BUTTON_RESPONSES["property_procedure"], "2": BUTTON_RESPONSES["property_timeline"],     "3": BUTTON_RESPONSES["property_consult"]},
-    "inheritance":    {"1": BUTTON_RESPONSES["inheritance_procedure"],"2": BUTTON_RESPONSES["inheritance_timeline"],"3": BUTTON_RESPONSES["inheritance_consult"]},
-    "corporate_law":  {"1": BUTTON_RESPONSES["corporate_procedure"],"2": BUTTON_RESPONSES["corporate_timeline"],   "3": BUTTON_RESPONSES["corporate_consult"]},
-    "legal_docs":     {"1": BUTTON_RESPONSES["docs_procedure"],     "2": BUTTON_RESPONSES["docs_timeline"],         "3": BUTTON_RESPONSES["docs_consult"]},
+    "16": ("Corporate Law", "corporate_law"),
+    "17": ("Talk to an Expert", "contact_us"),
 }
 
 MENU_TRIGGERS = {"menu", "options", "start", "help", "main menu", "مینو", "آپشنز"}
@@ -334,6 +631,7 @@ def _handle_message(msg, socketio, name=""):
 
         # New user or explicit menu trigger
         if is_new or text_lower in MENU_TRIGGERS:
+            _user_service_context.pop(phone, None)
             _executor.submit(_send_welcome_menu, phone, socketio)
             return
 
@@ -344,29 +642,30 @@ def _handle_message(msg, socketio, name=""):
                 _executor.submit(_process_ai_reply, phone, text, socketio)
             return
 
-        # Sub-menu: user replied 1/2/3 after selecting a LawAdvise service
-        if phone in _user_service_context and text in ("1", "2", "3"):
+        # Sub-menu: user replied with a number after selecting a service
+        # that has its own sub-menu (LawAdvise services or BizAdvise
+        # Business Registration / Taxation / Accountancy / Legal Advisory)
+        if phone in _user_service_context:
             service = _user_service_context[phone]
-            response = TEXT_SUB_RESPONSES.get(service, {}).get(text)
+            response = ALL_SUB_RESPONSES.get(service, {}).get(text)
             if response:
                 _executor.submit(_send_text_reply, phone, response, socketio)
                 del _user_service_context[phone]
                 return
 
-        # Top-level number selection (1-16)
+        # Top-level number selection (1-17)
         if text in TEXT_SERVICE_MENUS:
             title, service_id = TEXT_SERVICE_MENUS[text]
-            if service_id in BIZ_DIRECT_IDS:
-                # BizAdvise — send response directly
+            if service_id in SERVICE_MENU_IDS:
+                # Has its own sub-menu — remember context, then try the
+                # interactive menu (falls back to text internally if it fails)
+                _user_service_context[phone] = service_id
+                _executor.submit(_send_service_menu_safe, phone, service_id, socketio)
+            elif service_id in BIZ_DIRECT_IDS:
+                # No sub-menu — send full response directly
                 response = BUTTON_RESPONSES.get(service_id, "")
                 if response:
                     _executor.submit(_send_text_reply, phone, response, socketio)
-            elif service_id in SERVICE_MENU_IDS:
-                # LawAdvise — show sub-menu
-                _user_service_context[phone] = service_id
-                sub_menu = TEXT_SUB_MENU.get(service_id, "")
-                _executor.submit(_send_text_reply, phone, sub_menu, socketio)
-                _executor.submit(_send_service_menu_safe, phone, service_id, socketio)
             return
 
         # Default — AI reply
@@ -398,6 +697,11 @@ def _handle_message(msg, socketio, name=""):
             button_title = interactive["button_reply"]["title"]
             save_message(phone, button_title, "user", socketio,
                          status="delivered", whatsapp_message_id=msg_id)
+            if button_id in SERVICE_MENU_IDS:
+                # Category with its own sub-menu tapped via quick-reply button
+                _user_service_context[phone] = button_id
+                _executor.submit(_send_service_menu_safe, phone, button_id, socketio)
+                return
             response = BUTTON_RESPONSES.get(button_id)
             if response:
                 _executor.submit(_send_text_reply, phone, response, socketio)
@@ -445,11 +749,14 @@ def _send_welcome_menu(phone, socketio):
 
 def _send_service_menu_safe(phone, service_id, socketio):
     try:
-        success, _ = send_service_menu(phone, service_id)
-        if not success:
-            sub_menu = TEXT_SUB_MENU.get(service_id, "")
+        success, wa_id = send_service_menu(phone, service_id)
+        if success:
+            save_message(phone, ALL_SUB_MENUS.get(service_id, ""), "bot", socketio,
+                         status="sent", whatsapp_message_id=wa_id, source="ai")
+        else:
+            sub_menu = ALL_SUB_MENUS.get(service_id, "")
             if sub_menu:
-                send_text(phone, sub_menu)
+                _send_text_reply(phone, sub_menu, socketio)
     except Exception as e:
         print(f"Service menu error for {phone}: {e}")
 
