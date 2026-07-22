@@ -341,7 +341,7 @@ TEXT_SERVICE_MENUS = {
     "17": ("Talk to an Expert", "contact_us"),
 }
 
-MENU_TRIGGERS = {"menu", "options", "start", "help", "main menu", "مینو", "آپشنز"}
+MENU_TRIGGERS = {"menu", "options", "start", "help", "main menu", "مینو", "آپشنز", "info", "information", "details", "services"}
 GREETING_WORDS = {"hi", "hello", "hey", "helo", "hii", "salam", "assalam", "السلام", "assalamualaikum", "aoa"}
 
 
