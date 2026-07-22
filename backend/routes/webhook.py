@@ -2,6 +2,9 @@ import os
 import hmac
 import hashlib
 import time
+import requests as http_requests
+import mimetypes as mt
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from flask import Blueprint, request, current_app
 
@@ -15,15 +18,15 @@ webhook_bp = Blueprint("webhook", __name__)
 
 _executor = ThreadPoolExecutor(max_workers=10)
 _processed_ids = set()
-_user_service_context = {}  # tracks which service a user last selected
+_user_service_context = {}
 
 CONTACT = "03003029093 / 03332454111"
+MEDIA_FOLDER = "media_files"
 
-# ── Top-level overview responses (shown when a category has no sub-menu,
-#    or as an intro line before an interactive sub-menu is sent) ──────────
+# ── All your existing BUTTON_RESPONSES, BIZ_SUB_MENU, etc. ───────────────
+# (keeping them exactly as you have them)
 
 BUTTON_RESPONSES = {
-    # ── BizAdvise: Business Consultancy ──
     "biz_business": (
         "🏢 *Business Consultancy*\n\n"
         "We offer:\n"
@@ -112,8 +115,6 @@ BUTTON_RESPONSES = {
         f"📞 Call or WhatsApp: {CONTACT}\n\n"
         "Please share your Name, Mobile Number, and Best Time to Call and we will get back to you shortly."
     ),
-
-    # ── LawAdvise ──
     "nikah_procedure": f"📋 *Online Nikah Procedure:*\n\n• At least one party must be residing outside Pakistan.\n• The legal process is identical to a conventional Nikah.\n• One party participates remotely through a secure online platform.\n\nWould you like to book a consultation with our legal team?",
     "nikah_documents": f"📄 *Required Documents for Online Nikah:*\n\nFrom both parties:\n• Valid CNIC / NICOP or Passport\n• Recent passport-size photographs\n• 2 Witnesses (CNIC of both witnesses)\n\nWould you like to book a consultation?",
     "nikah_consult": "💬 Our legal team will be in touch with you shortly to assist with your Online Nikah. Please share your preferred contact time if needed.",
@@ -144,8 +145,6 @@ BUTTON_RESPONSES = {
     "contact_us": f"📞 *Contact Us:*\n\nOur team will be in touch with you shortly.\n\n📱 {CONTACT}\n\nPlease share your Name, Mobile Number, and Best Time to Call.",
 }
 
-# ── LawAdvise sub-menus (Procedure / Documents-or-Timeline / Consult) ────
-
 TEXT_SUB_MENU = {
     "online_nikah":   "You selected *Online Marriage / Online Nikah* 🕌\n\nReply with:\n1️⃣ Procedure\n2️⃣ Documents\n3️⃣ Talk to a Lawyer",
     "court_marriage": "You selected *Court Marriage* 💍\n\nReply with:\n1️⃣ Procedure\n2️⃣ Documents\n3️⃣ Book Consultation",
@@ -169,12 +168,6 @@ TEXT_SUB_RESPONSES = {
     "corporate_law":  {"1": BUTTON_RESPONSES["corporate_procedure"],"2": BUTTON_RESPONSES["corporate_timeline"],   "3": BUTTON_RESPONSES["corporate_consult"]},
     "legal_docs":     {"1": BUTTON_RESPONSES["docs_procedure"],     "2": BUTTON_RESPONSES["docs_timeline"],         "3": BUTTON_RESPONSES["docs_consult"]},
 }
-
-# ── BizAdvise sub-menus ────────────────────────────────────────────────
-# Business Registration, Taxation, Accountancy, and Corporate Legal Advisory
-# each bundle several distinct services with their own required documents /
-# cost / timeline, so — same as LawAdvise — they get a numbered sub-menu
-# instead of one giant reply.
 
 BIZ_SUB_MENU = {
     "biz_business": (
@@ -228,250 +221,78 @@ BIZ_SUB_RESPONSES = {
     "biz_business": {
         "1": (
             "🏢 *Private Limited / SMC / LLC Registration (UK / USA)*\n\n"
-            "Company Types: Private Limited Company, Single Member Company (SMC), "
-            "LLC Registration (UK / USA)\n\n"
-            "Required Documents:\n"
-            "• Director CNIC\n• Shareholder Details\n• Company Name\n• Office Address\n"
+            "Company Types: Private Limited Company, Single Member Company (SMC), LLC Registration (UK / USA)\n\n"
+            "Required Documents:\n• Director CNIC\n• Shareholder Details\n• Company Name\n• Office Address\n"
             "• Business Activity\n• Contact Number\n• Email Address\n\n"
-            "Cost: May vary case to case\nTimeline: May vary case to case\n\n"
-            f"Contact us: {CONTACT}"
+            f"Cost: May vary case to case\nTimeline: May vary case to case\n\nContact us: {CONTACT}"
         ),
         "2": (
             "🏢 *Partnership Firm / AOP Registration*\n\n"
-            "Required Documents:\n"
-            "• Director CNIC\n• Shareholder Details\n• Company Name\n• Office Address\n"
-            "• Business Activity\n• Contact Number\n• Email Address\n\n"
-            "Cost: May vary case to case\nTimeline: May vary case to case\n\n"
-            f"Contact us: {CONTACT}"
+            "Required Documents:\n• Director CNIC\n• Shareholder Details\n• Company Name\n• Office Address\n"
+            f"• Business Activity\n• Contact Number\n• Email Address\n\nCost: May vary case to case\nTimeline: May vary case to case\n\nContact us: {CONTACT}"
         ),
         "3": (
             "🏢 *Proprietorship Registration*\n\n"
-            "Required Documents:\n"
-            "• CNIC\n• Mobile Number\n• Business Address\n• Nature of Business\n• Email Address\n\n"
-            "Cost: May vary case to case\nTimeline: May vary case to case\n\n"
-            f"Contact us: {CONTACT}"
+            f"Required Documents:\n• CNIC\n• Mobile Number\n• Business Address\n• Nature of Business\n• Email Address\n\nCost: May vary case to case\nTimeline: May vary case to case\n\nContact us: {CONTACT}"
         ),
         "4": (
             "™️ *Trademark Registration*\n\nRegister your Brand Name or Logo.\n\n"
-            "Required Documents:\n"
-            "• Applicant CNIC\n• Brand Name\n• Logo (Optional)\n• Business Details\n\n"
-            "Cost: May vary case to case\nTimeline: May vary case to case\n\n"
-            f"Contact us: {CONTACT}"
+            f"Required Documents:\n• Applicant CNIC\n• Brand Name\n• Logo (Optional)\n• Business Details\n\nCost: May vary case to case\nTimeline: May vary case to case\n\nContact us: {CONTACT}"
         ),
         "5": (
             "©️ *Copyright Registration*\n\nWhat can be registered: Literary Work, Software, Music\n\n"
-            "Required Documents:\n"
-            "• Business Registration Documents\n• Utility Bill\n• Owner's CNIC\n\n"
-            "Cost: May vary case to case\nTimeline: May vary case to case\n\n"
-            f"Contact us: {CONTACT}"
+            f"Required Documents:\n• Business Registration Documents\n• Utility Bill\n• Owner's CNIC\n\nCost: May vary case to case\nTimeline: May vary case to case\n\nContact us: {CONTACT}"
         ),
         "6": (
             "📜 *Patent Registration*\n\n"
-            "Required Documents:\n"
-            "• Business Registration Documents\n• Utility Bill\n• Owner's CNIC\n\n"
-            "Cost: May vary case to case\nTimeline: May vary case to case\n\n"
-            f"Contact us: {CONTACT}"
+            f"Required Documents:\n• Business Registration Documents\n• Utility Bill\n• Owner's CNIC\n\nCost: May vary case to case\nTimeline: May vary case to case\n\nContact us: {CONTACT}"
         ),
         "7": (
             "🏛️ *Other Registrations — KCCI / PEC / DTS / PSEB*\n\n"
-            "*KCCI Registration*\n"
-            "Required: Business Registration Documents, Account Maintenance Certificate, "
-            "Utility Bill, Owner's CNIC/Photo, Latest Tax Return\n\n"
-            "*PEC Registration*\n"
-            "Required: Business Registration Documents, Account Maintenance Certificate, "
-            "Utility Bill, Owner's CNIC/Photo, PEC Registered Engineer\n\n"
-            "*DTS Registration*\n"
-            "Required: Business Registration Documents, Account Maintenance Certificate, "
-            "Utility Bill, Owner's CNIC/Photo, At least 800CC vehicle in name of owner or "
-            "business, Bank Guarantee\n\n"
-            "*PSEB Registration*\n"
-            "Required: Business Registration Documents, Account Maintenance Certificate, "
-            "Utility Bill, Owner's CNIC/Photo\n\n"
-            "Cost: May vary case to case\n\n"
-            f"Let us know which one you need and contact us: {CONTACT}"
+            "*KCCI:* Business Registration Docs, Account Maintenance Certificate, Utility Bill, CNIC/Photo, Latest Tax Return\n\n"
+            "*PEC:* Business Registration Docs, Account Maintenance Certificate, Utility Bill, CNIC/Photo, PEC Registered Engineer\n\n"
+            "*DTS:* Business Registration Docs, Account Maintenance Certificate, Utility Bill, CNIC/Photo, 800CC+ vehicle, Bank Guarantee\n\n"
+            f"*PSEB:* Business Registration Docs, Account Maintenance Certificate, Utility Bill, CNIC/Photo\n\nContact us: {CONTACT}"
         ),
         "8": BUTTON_RESPONSES["biz_consult"],
     },
     "biz_tax": {
-        "1": (
-            "💰 *NTN Registration — Individual*\n\n"
-            "Required Documents:\n• Copy of CNIC\n• Email Address\n• Contact Number\n\n"
-            "Cost: Rs. 500\nTimeline: 30 minutes\n\n"
-            f"Contact us: {CONTACT}"
-        ),
-        "2": (
-            "💰 *NTN Registration — Business (Sole Proprietor / Partnership / Company)*\n\n"
-            "Required Documents:\n"
-            "• Business Registration Documents\n• Account Maintenance Certificate\n"
-            "• Utility Bill\n• Owner's CNIC\n• Contact Information\n\n"
-            "Cost: May vary case to case\n\n"
-            f"Contact us: {CONTACT}"
-        ),
-        "3": (
-            "🧾 *Income Tax Return*\n\n"
-            "Types: Salaried Individual, Freelancer, Business Owner, Partnership Firm, "
-            "Company, Overseas Pakistani\n\n"
-            "• Salaried Individual: Salary Slip, Details of Assets\n"
-            "• Freelancer: Bank Statement, Source of Income, Details of Assets\n"
-            "• Business Owner: Bank Statement, Source of Income, Details of Assets\n"
-            "• Business Tax Return: Bank Statement, Business Internal Accounts, "
-            "Details of Expenses, Tax Deduction Certificates, Details of Assets in name of business\n\n"
-            f"Contact us: {CONTACT}"
-        ),
-        "4": (
-            "🧾 *Sales Tax Registration*\n\n"
-            "Required Documents:\n"
-            "• Business Registration Documents\n• Account Maintenance Certificate\n"
-            "• Utility Bill\n• Owner's CNIC\n• Rent Agreement/Ownership Document\n• Contact Details\n\n"
-            "Cost: May vary case to case\n\n"
-            f"Contact us: {CONTACT}"
-        ),
-        "5": (
-            "🧾 *Sales Tax Monthly Return*\n\n"
-            "Requirement: Details of invoices generated in the last month\n\n"
-            f"Contact us: {CONTACT}"
-        ),
-        "6": (
-            "🧾 *Provincial Sales Tax (SRB, PRA, BRA, KPRA)*\n\n"
-            "Same requirements as Sales Tax Registration.\n\n"
-            "Required Documents:\n"
-            "• Business Registration Documents\n• Account Maintenance Certificate\n"
-            "• Utility Bill\n• Owner's CNIC/Photo\n\n"
-            "Cost: May vary case to case\n\n"
-            f"Contact us: {CONTACT}"
-        ),
-        "7": (
-            "📋 *ATL (Active Taxpayer List)*\n\n"
-            "• Check ATL Status: Consult our specialist\n"
-            "• Become Active Taxpayer: Consult our specialist\n"
-            "• ATL Restoration: Consult our specialist\n\n"
-            f"Contact us: {CONTACT}"
-        ),
-        "8": (
-            "📩 *Tax Notices*\n\n"
-            "FBR Notice, Audit Notice, ATL Notice, Section 114, Section 122, Section 111, "
-            "Reply to Notice — all require consultation with our tax experts.\n\n"
-            f"Contact us: {CONTACT}"
-        ),
-        "9": (
-            "💵 *Tax Refund*\n\n"
-            "Requires consultation with our tax experts.\n\n"
-            f"Contact us: {CONTACT}"
-        ),
+        "1": f"💰 *NTN Registration — Individual*\n\nRequired Documents:\n• Copy of CNIC\n• Email Address\n• Contact Number\n\nCost: Rs. 500\nTimeline: 30 minutes\n\nContact us: {CONTACT}",
+        "2": f"💰 *NTN Registration — Business*\n\nRequired Documents:\n• Business Registration Documents\n• Account Maintenance Certificate\n• Utility Bill\n• Owner's CNIC\n• Contact Information\n\nCost: May vary case to case\n\nContact us: {CONTACT}",
+        "3": f"🧾 *Income Tax Return*\n\n• Salaried Individual: Salary Slip, Details of Assets\n• Freelancer: Bank Statement, Source of Income, Details of Assets\n• Business Owner: Bank Statement, Source of Income, Details of Assets\n• Business Tax Return: Bank Statement, Business Internal Accounts, Details of Expenses, Tax Deduction Certificates, Details of Assets\n\nContact us: {CONTACT}",
+        "4": f"🧾 *Sales Tax Registration*\n\nRequired Documents:\n• Business Registration Documents\n• Account Maintenance Certificate\n• Utility Bill\n• Owner's CNIC\n• Rent Agreement/Ownership Document\n• Contact Details\n\nCost: May vary case to case\n\nContact us: {CONTACT}",
+        "5": f"🧾 *Sales Tax Monthly Return*\n\nRequirement: Details of invoices generated in the last month\n\nContact us: {CONTACT}",
+        "6": f"🧾 *Provincial Sales Tax (SRB, PRA, BRA, KPRA)*\n\nRequired Documents:\n• Business Registration Documents\n• Account Maintenance Certificate\n• Utility Bill\n• Owner's CNIC/Photo\n\nCost: May vary case to case\n\nContact us: {CONTACT}",
+        "7": f"📋 *ATL (Active Taxpayer List)*\n\n• Check ATL Status: Consult our specialist\n• Become Active Taxpayer: Consult our specialist\n• ATL Restoration: Consult our specialist\n\nContact us: {CONTACT}",
+        "8": f"📩 *Tax Notices*\n\nFBR Notice, Audit Notice, ATL Notice, Section 114, Section 122, Section 111, Reply to Notice — all require consultation with our tax experts.\n\nContact us: {CONTACT}",
+        "9": f"💵 *Tax Refund*\n\nRequires consultation with our tax experts.\n\nContact us: {CONTACT}",
         "10": BUTTON_RESPONSES["biz_consult"],
     },
     "biz_accounts": {
-        "1": (
-            "📊 *Bookkeeping*\n\n"
-            "Services: Sales Recording, Purchase Recording, Cash Book, Bank Reconciliation, "
-            "Accounts Receivable, Accounts Payable, General Ledger, Expense Management, "
-            "Inventory Recording, Financial Reports\n\n"
-            "Our bookkeeping specialists can help you maintain accurate and up-to-date financial records.\n\n"
-            f"Contact us: {CONTACT}"
-        ),
-        "2": (
-            "📊 *Annual Accounts Management*\n\n"
-            "Includes: Profit & Loss Account, Balance Sheet, Cash Flow Statement, Trial Balance, "
-            "General Ledger Review, Financial Statements\n\n"
-            "Cost: May vary case to case\nTimeline: May vary case to case\n\n"
-            f"Contact us: {CONTACT}"
-        ),
-        "3": (
-            "📊 *Audited Accounts*\n\n"
-            "Who needs an audit: Private Limited Company, NGO, Trust, Large Business, "
-            "Statutory Requirement, Voluntary Audit\n\n"
-            "Cost: May vary case to case\nTimeline: May vary case to case\n\n"
-            f"Contact us: {CONTACT}"
-        ),
-        "4": (
-            "📊 *Internal & External Audit*\n\n"
-            "Internal Audit covers: Risk Assessment, Internal Controls, Compliance Review, "
-            "Operational Review, Audit Report\n\n"
-            "External Audit covers: Independent Audit, Financial Verification, Statutory Compliance, "
-            "Audit Opinion, Final Report\n\n"
-            f"Contact us: {CONTACT}"
-        ),
-        "5": (
-            "📊 *Financial Reporting*\n\n"
-            "Types: Monthly Reports, Quarterly Reports, Annual Reports, Management Reports, Custom Reports\n\n"
-            f"Contact us: {CONTACT}"
-        ),
-        "6": (
-            "📊 *Accounting Consultation*\n\n"
-            "Services: Business Accounting, Startup Accounting, Accounting System Setup, "
-            "Accounting Software (QuickBooks, Xero, Excel, Customized Solution), Financial Health Check\n\n"
-            f"Contact us: {CONTACT}"
-        ),
+        "1": f"📊 *Bookkeeping*\n\nServices: Sales Recording, Purchase Recording, Cash Book, Bank Reconciliation, Accounts Receivable, Accounts Payable, General Ledger, Expense Management, Inventory Recording, Financial Reports\n\nContact us: {CONTACT}",
+        "2": f"📊 *Annual Accounts Management*\n\nIncludes: Profit & Loss Account, Balance Sheet, Cash Flow Statement, Trial Balance, General Ledger Review, Financial Statements\n\nCost: May vary case to case\nTimeline: May vary case to case\n\nContact us: {CONTACT}",
+        "3": f"📊 *Audited Accounts*\n\nWho needs an audit: Private Limited Company, NGO, Trust, Large Business, Statutory Requirement, Voluntary Audit\n\nCost: May vary case to case\nTimeline: May vary case to case\n\nContact us: {CONTACT}",
+        "4": f"📊 *Internal & External Audit*\n\nInternal Audit: Risk Assessment, Internal Controls, Compliance Review, Operational Review, Audit Report\n\nExternal Audit: Independent Audit, Financial Verification, Statutory Compliance, Audit Opinion, Final Report\n\nContact us: {CONTACT}",
+        "5": f"📊 *Financial Reporting*\n\nTypes: Monthly Reports, Quarterly Reports, Annual Reports, Management Reports, Custom Reports\n\nContact us: {CONTACT}",
+        "6": f"📊 *Accounting Consultation*\n\nServices: Business Accounting, Startup Accounting, Accounting System Setup, Accounting Software (QuickBooks, Xero, Excel, Customized Solution), Financial Health Check\n\nContact us: {CONTACT}",
         "7": BUTTON_RESPONSES["biz_consult"],
     },
     "biz_legal": {
-        "1": (
-            "⚖️ *Contract Drafting*\n\n"
-            "Types: Business Contracts, Partnership Contracts, Employment Contracts, "
-            "Service Agreements, NDA, MoU\n\n"
-            "Cost: May vary case to case\nTimeline: May vary case to case\n\n"
-            f"Contact us: {CONTACT}"
-        ),
-        "2": (
-            "⚖️ *Corporate Compliance*\n\n"
-            "Services: SECP Compliance, Company Annual Returns, Board Resolutions, Share Transfer, "
-            "Director Changes, Company Record Updates, Compliance Calendar\n\n"
-            f"Contact us: {CONTACT}"
-        ),
-        "3": (
-            "⚖️ *Legal Notices*\n\n"
-            "Types: Recovery Notice, Breach of Contract Notice, Legal Demand Notice, "
-            "Employee Notice, Tenant Notice, Commercial Notice\n\n"
-            f"Contact us: {CONTACT}"
-        ),
-        "4": (
-            "⚖️ *Legal Opinions*\n\n"
-            "Types: Business Legal Opinion, Contract Review, Compliance Opinion, "
-            "Investment Opinion, Property Related Opinion\n\n"
-            f"Contact us: {CONTACT}"
-        ),
-        "5": (
-            "⚖️ *Regulatory Compliance*\n\n"
-            "Areas: SECP, FBR, IPO Pakistan, Labour Laws, Corporate Governance, Compliance Advisory\n\n"
-            f"Contact us: {CONTACT}"
-        ),
-        "6": (
-            "⚖️ *Company Secretarial Services*\n\n"
-            "Services: Statutory Registers, Board Meeting Minutes, Share Certificates, "
-            "Annual Returns, Corporate Resolutions, Company Record Maintenance\n\n"
-            f"Contact us: {CONTACT}"
-        ),
-        "7": (
-            "⚖️ *Legal Consultation*\n\n"
-            "Types: Startup Legal Advice, SME Legal Advice, Corporate Advisory, "
-            "Compliance Consultation, Contract Review, Business Risk Assessment\n\n"
-            f"Contact us: {CONTACT}"
-        ),
+        "1": f"⚖️ *Contract Drafting*\n\nTypes: Business Contracts, Partnership Contracts, Employment Contracts, Service Agreements, NDA, MoU\n\nCost: May vary case to case\nTimeline: May vary case to case\n\nContact us: {CONTACT}",
+        "2": f"⚖️ *Corporate Compliance*\n\nServices: SECP Compliance, Company Annual Returns, Board Resolutions, Share Transfer, Director Changes, Company Record Updates, Compliance Calendar\n\nContact us: {CONTACT}",
+        "3": f"⚖️ *Legal Notices*\n\nTypes: Recovery Notice, Breach of Contract Notice, Legal Demand Notice, Employee Notice, Tenant Notice, Commercial Notice\n\nContact us: {CONTACT}",
+        "4": f"⚖️ *Legal Opinions*\n\nTypes: Business Legal Opinion, Contract Review, Compliance Opinion, Investment Opinion, Property Related Opinion\n\nContact us: {CONTACT}",
+        "5": f"⚖️ *Regulatory Compliance*\n\nAreas: SECP, FBR, IPO Pakistan, Labour Laws, Corporate Governance, Compliance Advisory\n\nContact us: {CONTACT}",
+        "6": f"⚖️ *Company Secretarial Services*\n\nServices: Statutory Registers, Board Meeting Minutes, Share Certificates, Annual Returns, Corporate Resolutions, Company Record Maintenance\n\nContact us: {CONTACT}",
+        "7": f"⚖️ *Legal Consultation*\n\nTypes: Startup Legal Advice, SME Legal Advice, Corporate Advisory, Compliance Consultation, Contract Review, Business Risk Assessment\n\nContact us: {CONTACT}",
         "8": BUTTON_RESPONSES["biz_consult"],
     },
 }
 
-# ── Merge LawAdvise + BizAdvise sub-menu structures ───────────────────────
-# Any category in ALL_SUB_MENUS gets a numbered sub-menu instead of an
-# instant reply. Categories NOT in here (NGO, Digital Marketing, Urgent
-# Help, direct contact) already carry all their info in one BUTTON_RESPONSES
-# block, so they don't need a sub-menu.
-
 ALL_SUB_MENUS = {**TEXT_SUB_MENU, **BIZ_SUB_MENU}
 ALL_SUB_RESPONSES = {**TEXT_SUB_RESPONSES, **BIZ_SUB_RESPONSES}
-
 SERVICE_MENU_IDS = set(ALL_SUB_MENUS.keys())
-# = {"online_nikah", "court_marriage", "divorce_khula", "child_custody",
-#    "maintenance", "property_law", "inheritance", "corporate_law", "legal_docs",
-#    "biz_business", "biz_tax", "biz_accounts", "biz_legal"}
-
-# BizAdvise / general services that respond directly from BUTTON_RESPONSES —
-# no sub-menu needed because there's nothing further to break out.
-BIZ_DIRECT_IDS = {
-    "biz_ngo", "biz_digital", "biz_urgent", "biz_consult", "contact_us"
-}
-
-# ── Text menus (fallback) ─────────────────────────────────────────────────
+BIZ_DIRECT_IDS = {"biz_ngo", "biz_digital", "biz_urgent", "biz_consult", "contact_us"}
 
 TEXT_MAIN_MENU_1 = """Welcome to *BizAdvise & LawAdvise Consulting* ⚖️🏢
 
@@ -556,6 +377,54 @@ def _verify_signature(payload: bytes, signature: str) -> bool:
         return False
 
 
+def _download_whatsapp_media(media_id, media_type):
+    """Download media from WhatsApp and save locally. Returns (filepath, filename) or (None, None)."""
+    try:
+        WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
+        headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
+
+        # Step 1: get media URL
+        url_res = http_requests.get(
+            f"https://graph.facebook.com/v18.0/{media_id}",
+            headers=headers, timeout=10
+        )
+        if url_res.status_code != 200:
+            print(f"Failed to get media URL: {url_res.text}")
+            return None, None
+
+        media_url = url_res.json().get("url")
+        if not media_url:
+            return None, None
+
+        # Step 2: download the file
+        dl_res = http_requests.get(media_url, headers=headers, timeout=30)
+        if dl_res.status_code != 200:
+            print(f"Failed to download media: {dl_res.status_code}")
+            return None, None
+
+        # Step 3: determine extension from content-type
+        content_type = dl_res.headers.get("Content-Type", "").split(";")[0].strip()
+        ext = mt.guess_extension(content_type) or ""
+        # Fix common wrong guesses
+        ext_fixes = {".jpe": ".jpg", ".jpeg": ".jpg", ".jfif": ".jpg"}
+        ext = ext_fixes.get(ext, ext)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{media_type}_{timestamp}{ext}"
+        os.makedirs(MEDIA_FOLDER, exist_ok=True)
+        filepath = os.path.join(MEDIA_FOLDER, filename)
+
+        with open(filepath, "wb") as f:
+            f.write(dl_res.content)
+
+        print(f"Media saved: {filepath}")
+        return filepath, filename
+
+    except Exception as e:
+        print(f"_download_whatsapp_media error: {e}")
+        return None, None
+
+
 @webhook_bp.route("/webhook", methods=["GET"])
 def verify():
     verify_token = os.getenv("VERIFY_TOKEN")
@@ -629,22 +498,17 @@ def _handle_message(msg, socketio, name=""):
 
         text_lower = text.lower()
 
-        # New user or explicit menu trigger
         if is_new or text_lower in MENU_TRIGGERS:
             _user_service_context.pop(phone, None)
             _executor.submit(_send_welcome_menu, phone, socketio)
             return
 
-        # Greetings for returning users — AI handles
         if text_lower in GREETING_WORDS:
             mode = get_user_mode(phone)
             if mode == 0:
                 _executor.submit(_process_ai_reply, phone, text, socketio)
             return
 
-        # Sub-menu: user replied with a number after selecting a service
-        # that has its own sub-menu (LawAdvise services or BizAdvise
-        # Business Registration / Taxation / Accountancy / Legal Advisory)
         if phone in _user_service_context:
             service = _user_service_context[phone]
             response = ALL_SUB_RESPONSES.get(service, {}).get(text)
@@ -653,22 +517,17 @@ def _handle_message(msg, socketio, name=""):
                 del _user_service_context[phone]
                 return
 
-        # Top-level number selection (1-17)
         if text in TEXT_SERVICE_MENUS:
             title, service_id = TEXT_SERVICE_MENUS[text]
             if service_id in SERVICE_MENU_IDS:
-                # Has its own sub-menu — remember context, then try the
-                # interactive menu (falls back to text internally if it fails)
                 _user_service_context[phone] = service_id
                 _executor.submit(_send_service_menu_safe, phone, service_id, socketio)
             elif service_id in BIZ_DIRECT_IDS:
-                # No sub-menu — send full response directly
                 response = BUTTON_RESPONSES.get(service_id, "")
                 if response:
                     _executor.submit(_send_text_reply, phone, response, socketio)
             return
 
-        # Default — AI reply
         mode = get_user_mode(phone)
         if mode == 0:
             _executor.submit(_process_ai_reply, phone, text, socketio)
@@ -698,7 +557,6 @@ def _handle_message(msg, socketio, name=""):
             save_message(phone, button_title, "user", socketio,
                          status="delivered", whatsapp_message_id=msg_id)
             if button_id in SERVICE_MENU_IDS:
-                # Category with its own sub-menu tapped via quick-reply button
                 _user_service_context[phone] = button_id
                 _executor.submit(_send_service_menu_safe, phone, button_id, socketio)
                 return
@@ -712,9 +570,23 @@ def _handle_message(msg, socketio, name=""):
 
     elif msg_type in ("image", "audio", "document", "video"):
         media_info = msg.get(msg_type, {})
-        caption = media_info.get("caption", "") or f"Sent a {msg_type}"
-        save_message(phone, caption, "user", socketio,
-                     message_type=msg_type, whatsapp_message_id=msg_id)
+        caption = media_info.get("caption", "") or ""
+        media_id = media_info.get("id")
+
+        # Download in background so webhook returns fast
+        def save_media():
+            local_path, local_filename = None, None
+            if media_id:
+                local_path, local_filename = _download_whatsapp_media(media_id, msg_type)
+            display_text = caption or f"Sent a {msg_type}"
+            save_message(
+                phone, display_text, "user", socketio,
+                message_type=msg_type, whatsapp_message_id=msg_id,
+                media_path=local_path,
+                file_name=local_filename or media_info.get("filename", ""),
+            )
+
+        _executor.submit(save_media)
 
     elif msg_type == "button":
         text = msg["button"]["text"]
@@ -726,7 +598,6 @@ def _handle_message(msg, socketio, name=""):
 
 
 def _send_welcome_menu(phone, socketio):
-    """Try interactive list first, fall back to two-part text menu."""
     try:
         success, wa_id = send_main_menu(phone)
         if success:

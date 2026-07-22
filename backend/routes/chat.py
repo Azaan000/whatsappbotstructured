@@ -1,5 +1,6 @@
 import os
 import csv
+import urllib.parse
 from datetime import datetime
 from io import StringIO, BytesIO
 
@@ -66,26 +67,19 @@ def update_user():
 @chat_bp.route("/delete-user/<phone>", methods=["DELETE"])
 @require_auth
 def delete_user(phone):
-    """Delete a user and all their messages from the database."""
     conn = get_db()
     cursor = conn.cursor()
     try:
-        # Check user exists
         cursor.execute("SELECT phone FROM users WHERE phone=?", (phone,))
         if not cursor.fetchone():
             return jsonify({"error": "User not found"}), 404
-
-        # Delete messages first (foreign key order)
         cursor.execute("DELETE FROM messages WHERE phone=?", (phone,))
         cursor.execute("DELETE FROM users WHERE phone=?", (phone,))
         conn.commit()
-
-        # Notify dashboard via socket
         _socketio().emit("user_deleted", {"phone": phone})
-        print(f"Deleted user and messages: {phone}")
+        print(f"Deleted user: {phone}")
         return jsonify({"success": True, "phone": phone})
     except Exception as e:
-        print(f"delete_user error: {e}")
         return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
@@ -145,18 +139,34 @@ def send_file_route():
 
     success, wa_id = send_media(phone, filepath, media_type, caption)
 
+    if success:
+        # Keep file locally so dashboard can view/download it
+        save_message(phone, caption, "bot", _socketio(),
+                     message_type=media_type, file_name=original_name,
+                     media_path=filepath, whatsapp_message_id=wa_id)
+        return jsonify({"success": True, "message_id": wa_id})
+
+    # Only remove on failure
     try:
         os.remove(filepath)
     except Exception:
         pass
-
-    if success:
-        save_message(phone, caption, "bot", _socketio(),
-                     message_type=media_type, file_name=original_name,
-                     whatsapp_message_id=wa_id)
-        return jsonify({"success": True, "message_id": wa_id})
-
     return jsonify({"error": "Failed to send file"}), 500
+
+
+# ── Media serve ────────────────────────────────────────────────────────────
+
+@chat_bp.route("/media/<path:filename>", methods=["GET"])
+@require_auth
+def serve_media(filename):
+    """Serve media files stored in the media_files folder."""
+    decoded = urllib.parse.unquote(filename)
+    # Only use the basename — prevent path traversal
+    base = os.path.basename(decoded)
+    filepath = os.path.join(MEDIA_FOLDER, base)
+    if not os.path.exists(filepath):
+        return jsonify({"error": "File not found"}), 404
+    return send_file(filepath)
 
 
 # ── Export ─────────────────────────────────────────────────────────────────

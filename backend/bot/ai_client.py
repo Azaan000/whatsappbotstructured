@@ -59,7 +59,7 @@ def ask_ai(user_message: str, retries: int = 1) -> str:
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
     }
-    system_prompt = f"""You are a professional legal assistant for LawAdvise Consulting, a Pakistani law firm.
+    system_prompt = f"""You are a professional legal assistant for LawAdvise Consulting And BizAdvise, a Pakistani law firm.
 
 RULES:
 - Reply in 2-3 short, clear sentences

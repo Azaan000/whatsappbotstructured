@@ -48,8 +48,6 @@ export default function App() {
   const [unseenConsultPhones, setUnseenConsultPhones] = useState(new Set());
   const consultationCount = unseenConsultPhones.size;
   const typingTimerRef = useRef(null);
-
-  // Track pending temp message _ids so we don't double-append socket confirms
   const pendingTempIds = useRef(new Set());
 
   const [showBroadcast, setShowBroadcast] = useState(false);
@@ -63,7 +61,15 @@ export default function App() {
     updateMessageStatus, updateTempStatus, removeMessage, selectedPhoneRef,
   } = useMessages(selectedPhone);
 
-  // ── Socket handlers ──────────────────────────────────────────────────────
+  // ── Refresh analytics helper ──────────────────────────────────────────
+  const refreshAnalytics = useCallback(async () => {
+    try {
+      const data = await api.getAnalytics();
+      setStats(data);
+    } catch {}
+  }, []);
+
+  // ── Socket handlers ───────────────────────────────────────────────────
 
   const handleNewUser = useCallback((data) => {
     setUsers((prev) => prev.find((u) => u.phone === data.phone) ? prev : [data, ...prev]);
@@ -77,7 +83,6 @@ export default function App() {
   }, [selectedPhoneRef]);
 
   const handleNewMessage = useCallback((data) => {
-    // Update sidebar
     setUsers((prev) => prev.map((u) =>
       u.phone === data.phone
         ? { ...u, last: data.message?.substring(0, 50), total_messages: (u.total_messages || 0) + 1, last_seen: data.timestamp }
@@ -86,11 +91,9 @@ export default function App() {
 
     if (data.direction === "user") {
       incrementUnread(data.phone);
-
-      // Consultation tracking — notify even for repeat requests
       if (isConsultMessage(data.message) && selectedPhoneRef.current !== data.phone) {
         const seen = getSeenConsults();
-        seen.delete(data.phone); // always re-mark as unseen on new request
+        seen.delete(data.phone);
         saveSeenConsults(seen);
         setUnseenConsultPhones((prev) => new Set(prev).add(data.phone));
       }
@@ -106,7 +109,6 @@ export default function App() {
       }
 
       if (data.direction === "user" || data.source === "ai") {
-        // Only append if not a dashboard-sent message (those are added optimistically)
         appendMessage({
           message: data.message,
           direction: data.direction,
@@ -118,7 +120,6 @@ export default function App() {
         });
       }
 
-      // Update status for dashboard-sent messages via whatsapp_message_id
       if (data.direction === "bot" && data.source !== "ai" && data.whatsapp_message_id) {
         updateMessageStatus(data.whatsapp_message_id, data.status);
       }
@@ -137,7 +138,9 @@ export default function App() {
     ));
     if (selectedPhoneRef.current === data.phone)
       setSelectedUser((prev) => ({ ...prev, human_mode: data.human_mode }));
-  }, [selectedPhoneRef]);
+    // Refresh analytics instantly when any mode changes via socket
+    refreshAnalytics();
+  }, [selectedPhoneRef, refreshAnalytics]);
 
   const handleUserUpdated = useCallback((data) => {
     setUsers((prev) => prev.map((u) =>
@@ -165,13 +168,17 @@ export default function App() {
   const handleUserDeletedSocket = useCallback((data) => handleUserDeleted(data.phone), [handleUserDeleted]);
 
   const { connected } = useSocket({
-    onNewUser: handleNewUser, onUserUpdate: handleUserUpdate,
-    onNewMessage: handleNewMessage, onStatusUpdate: handleStatusUpdate,
-    onModeChanged: handleModeChanged, onUserUpdated: handleUserUpdated,
-    onUserTyping: handleUserTyping, onUserDeleted: handleUserDeletedSocket,
+    onNewUser: handleNewUser,
+    onUserUpdate: handleUserUpdate,
+    onNewMessage: handleNewMessage,
+    onStatusUpdate: handleStatusUpdate,
+    onModeChanged: handleModeChanged,
+    onUserUpdated: handleUserUpdated,
+    onUserTyping: handleUserTyping,
+    onUserDeleted: handleUserDeletedSocket,
   });
 
-  // ── Initial load ─────────────────────────────────────────────────────────
+  // ── Initial load ──────────────────────────────────────────────────────
 
   useEffect(() => {
     const load = async () => {
@@ -189,14 +196,13 @@ export default function App() {
     load();
   }, []);
 
+  // Poll analytics every 30s
   useEffect(() => {
-    const id = setInterval(async () => {
-      try { const data = await api.getAnalytics(); setStats(data); } catch {}
-    }, 30000);
+    const id = setInterval(refreshAnalytics, 30000);
     return () => clearInterval(id);
-  }, []);
+  }, [refreshAnalytics]);
 
-  // ── User selection ───────────────────────────────────────────────────────
+  // ── User selection ────────────────────────────────────────────────────
 
   const selectUser = useCallback((user) => {
     setSelectedPhone(user.phone);
@@ -209,62 +215,33 @@ export default function App() {
     setUnseenConsultPhones((prev) => { const n = new Set(prev); n.delete(user.phone); return n; });
   }, [loadMessages, markAsRead]);
 
-  // ── Send actions ─────────────────────────────────────────────────────────
+  // ── Send actions ──────────────────────────────────────────────────────
 
   const handleSend = useCallback(async (text) => {
     if (!selectedPhone || sending) return;
     setSending(true);
     const tempId = Date.now();
-    const temp = {
-      _id: tempId,
-      message: text,
-      direction: "bot",
-      status: "sending",
-      timestamp: new Date().toISOString(),
-      message_type: "text",
-    };
+    const temp = { _id: tempId, message: text, direction: "bot", status: "sending", timestamp: new Date().toISOString(), message_type: "text" };
     pendingTempIds.current.add(tempId);
     appendMessage(temp);
-    try {
-      await api.sendMessage(selectedPhone, text);
-      updateTempStatus(tempId, "sent");
-    } catch {
-      removeMessage(temp);
-      alert("Failed to send message.");
-    } finally {
-      pendingTempIds.current.delete(tempId);
-      setSending(false);
-    }
+    try { await api.sendMessage(selectedPhone, text); updateTempStatus(tempId, "sent"); }
+    catch { removeMessage(temp); alert("Failed to send message."); }
+    finally { pendingTempIds.current.delete(tempId); setSending(false); }
   }, [selectedPhone, sending, appendMessage, removeMessage, updateTempStatus]);
 
   const handleSendFile = useCallback(async (file) => {
     if (!selectedPhone || sending) return;
     setSending(true);
     const tempId = Date.now();
-    const temp = {
-      _id: tempId,
-      message: file.name,
-      direction: "bot",
-      status: "sending",
-      timestamp: new Date().toISOString(),
-      message_type: "file",
-      file_name: file.name,
-    };
+    const temp = { _id: tempId, message: file.name, direction: "bot", status: "sending", timestamp: new Date().toISOString(), message_type: "file", file_name: file.name };
     pendingTempIds.current.add(tempId);
     appendMessage(temp);
-    try {
-      await api.sendFile(selectedPhone, file);
-      updateTempStatus(tempId, "sent");
-    } catch {
-      removeMessage(temp);
-      alert("Failed to send file.");
-    } finally {
-      pendingTempIds.current.delete(tempId);
-      setSending(false);
-    }
+    try { await api.sendFile(selectedPhone, file); updateTempStatus(tempId, "sent"); }
+    catch { removeMessage(temp); alert("Failed to send file."); }
+    finally { pendingTempIds.current.delete(tempId); setSending(false); }
   }, [selectedPhone, sending, appendMessage, removeMessage, updateTempStatus]);
 
-  // ── Toggle / edit ────────────────────────────────────────────────────────
+  // ── Toggle / edit ─────────────────────────────────────────────────────
 
   const handleToggleMode = useCallback(async () => {
     if (!selectedPhone) return;
@@ -274,21 +251,21 @@ export default function App() {
       setUsers((prev) => prev.map((u) =>
         u.phone === selectedPhone ? { ...u, human_mode: data.human_mode } : u
       ));
+      // Instantly refresh analytics after mode switch
+      await refreshAnalytics();
     } catch (e) { console.error("Toggle failed:", e); }
-  }, [selectedPhone]);
+  }, [selectedPhone, refreshAnalytics]);
 
   const handleUserSaved = useCallback(({ tags, notes }) => {
     setSelectedUser((prev) => ({ ...prev, tags, notes }));
-    setUsers((prev) => prev.map((u) =>
-      u.phone === selectedPhone ? { ...u, tags, notes } : u
-    ));
+    setUsers((prev) => prev.map((u) => u.phone === selectedPhone ? { ...u, tags, notes } : u));
   }, [selectedPhone]);
 
   const handleMarkAllRead = useCallback(() => {
     users.forEach((u) => markAsRead(u.phone));
   }, [users, markAsRead]);
 
-  // ── Render ───────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
@@ -302,21 +279,18 @@ export default function App() {
         </div>
       )}
 
-      {/* Top bar */}
+      {/* ── Top bar — business name left, buttons right ── */}
       <div style={barStyle}>
-        <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={statStyle}>👥 {stats.total_users || 0}</span>
-          <span style={statStyle}>💬 {stats.total_messages || 0}</span>
-          <span style={statStyle}>🤖 {stats.ai_users || 0}</span>
-          <span style={statStyle}>👤 {stats.human_users || 0}</span>
-          <span style={statStyle}>📅 {stats.messages_today || 0} today</span>
-          <span style={statStyle}>⏱ {stats.avg_response_time || 0} min</span>
-        </div>
+        {/* Business name slot — edit this text */}
+        <span style={{ fontSize: 16, fontWeight: 700, color: "#fff", letterSpacing: 0.3 }}>
+          BizAdvise & LawAdvise
+        </span>
 
-        <div style={{ width: 1, height: 20, background: "rgba(255,255,255,0.25)", flexShrink: 0 }} />
-
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginLeft: "auto" }}>
-          <button style={btnStyle("#fff", "#667eea")} onClick={() => setShowAnalytics(true)}>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <button
+            style={btnStyle("#fff", "#667eea")}
+            onClick={async () => { await refreshAnalytics(); setShowAnalytics(true); }}
+          >
             📊 Analytics
           </button>
           <button
@@ -334,11 +308,12 @@ export default function App() {
             📢 Broadcast
           </button>
           <button style={btnStyle("#4caf50", "#fff")} onClick={() => api.reloadKnowledge()}>
-            🔄 Reload
+            🔄 Reload KB
           </button>
         </div>
       </div>
 
+      {/* Main layout */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <Sidebar
           users={users}
@@ -365,6 +340,7 @@ export default function App() {
         />
       </div>
 
+      {/* Connection dot */}
       <div style={{ position: "fixed", bottom: 12, right: 12, background: connected ? "#4caf50" : "#f44336", color: "#fff", padding: "4px 10px", borderRadius: 20, fontSize: 11, display: "flex", alignItems: "center", gap: 5, boxShadow: "0 2px 6px rgba(0,0,0,0.2)", zIndex: 999 }}>
         <span style={{ width: 7, height: 7, background: "#fff", borderRadius: "50%", animation: "pulse 1.2s infinite", display: "inline-block" }} />
         {connected ? "Live" : "Reconnecting…"}
@@ -379,14 +355,17 @@ export default function App() {
 }
 
 const barStyle = {
-  display: "flex", gap: 12, padding: "10px 20px",
+  display: "flex",
+  alignItems: "center",
+  padding: "10px 20px",
   background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-  color: "#fff", alignItems: "center", flexWrap: "wrap", flexShrink: 0,
+  flexShrink: 0,
   boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+  gap: 12,
 };
-const statStyle = { fontSize: 12, opacity: 0.92, fontWeight: 500, whiteSpace: "nowrap" };
+
 const btnStyle = (bg, color) => ({
-  padding: "5px 12px", background: bg, color,
+  padding: "6px 14px", background: bg, color,
   border: "none", borderRadius: 20, cursor: "pointer",
   fontWeight: 600, fontSize: 12, whiteSpace: "nowrap",
 });
