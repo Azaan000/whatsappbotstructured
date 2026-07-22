@@ -61,7 +61,8 @@ export default function App() {
     updateMessageStatus, updateTempStatus, removeMessage, selectedPhoneRef,
   } = useMessages(selectedPhone);
 
-  // ── Refresh analytics helper ──────────────────────────────────────────
+  // ── Refresh analytics ─────────────────────────────────────────────────
+
   const refreshAnalytics = useCallback(async () => {
     try {
       const data = await api.getAnalytics();
@@ -116,6 +117,7 @@ export default function App() {
           timestamp: data.timestamp,
           message_type: data.message_type || "text",
           file_name: data.file_name || "",
+          media_path: data.media_path || "",
           whatsapp_message_id: data.whatsapp_message_id || "",
         });
       }
@@ -138,7 +140,6 @@ export default function App() {
     ));
     if (selectedPhoneRef.current === data.phone)
       setSelectedUser((prev) => ({ ...prev, human_mode: data.human_mode }));
-    // Refresh analytics instantly when any mode changes via socket
     refreshAnalytics();
   }, [selectedPhoneRef, refreshAnalytics]);
 
@@ -196,7 +197,6 @@ export default function App() {
     load();
   }, []);
 
-  // Poll analytics every 30s
   useEffect(() => {
     const id = setInterval(refreshAnalytics, 30000);
     return () => clearInterval(id);
@@ -221,24 +221,56 @@ export default function App() {
     if (!selectedPhone || sending) return;
     setSending(true);
     const tempId = Date.now();
-    const temp = { _id: tempId, message: text, direction: "bot", status: "sending", timestamp: new Date().toISOString(), message_type: "text" };
+    const temp = {
+      _id: tempId,
+      message: text,
+      direction: "bot",
+      status: "sending",
+      timestamp: new Date().toISOString(),
+      message_type: "text",
+      media_path: "",
+      file_name: "",
+    };
     pendingTempIds.current.add(tempId);
     appendMessage(temp);
-    try { await api.sendMessage(selectedPhone, text); updateTempStatus(tempId, "sent"); }
-    catch { removeMessage(temp); alert("Failed to send message."); }
-    finally { pendingTempIds.current.delete(tempId); setSending(false); }
+    try {
+      await api.sendMessage(selectedPhone, text);
+      updateTempStatus(tempId, "sent");
+    } catch {
+      removeMessage(temp);
+      alert("Failed to send message.");
+    } finally {
+      pendingTempIds.current.delete(tempId);
+      setSending(false);
+    }
   }, [selectedPhone, sending, appendMessage, removeMessage, updateTempStatus]);
 
   const handleSendFile = useCallback(async (file) => {
     if (!selectedPhone || sending) return;
     setSending(true);
     const tempId = Date.now();
-    const temp = { _id: tempId, message: file.name, direction: "bot", status: "sending", timestamp: new Date().toISOString(), message_type: "file", file_name: file.name };
+    const temp = {
+      _id: tempId,
+      message: file.name,
+      direction: "bot",
+      status: "sending",
+      timestamp: new Date().toISOString(),
+      message_type: "file",
+      file_name: file.name,
+      media_path: "",
+    };
     pendingTempIds.current.add(tempId);
     appendMessage(temp);
-    try { await api.sendFile(selectedPhone, file); updateTempStatus(tempId, "sent"); }
-    catch { removeMessage(temp); alert("Failed to send file."); }
-    finally { pendingTempIds.current.delete(tempId); setSending(false); }
+    try {
+      await api.sendFile(selectedPhone, file);
+      updateTempStatus(tempId, "sent");
+    } catch {
+      removeMessage(temp);
+      alert("Failed to send file.");
+    } finally {
+      pendingTempIds.current.delete(tempId);
+      setSending(false);
+    }
   }, [selectedPhone, sending, appendMessage, removeMessage, updateTempStatus]);
 
   // ── Toggle / edit ─────────────────────────────────────────────────────
@@ -251,14 +283,15 @@ export default function App() {
       setUsers((prev) => prev.map((u) =>
         u.phone === selectedPhone ? { ...u, human_mode: data.human_mode } : u
       ));
-      // Instantly refresh analytics after mode switch
       await refreshAnalytics();
     } catch (e) { console.error("Toggle failed:", e); }
   }, [selectedPhone, refreshAnalytics]);
 
   const handleUserSaved = useCallback(({ tags, notes }) => {
     setSelectedUser((prev) => ({ ...prev, tags, notes }));
-    setUsers((prev) => prev.map((u) => u.phone === selectedPhone ? { ...u, tags, notes } : u));
+    setUsers((prev) => prev.map((u) =>
+      u.phone === selectedPhone ? { ...u, tags, notes } : u
+    ));
   }, [selectedPhone]);
 
   const handleMarkAllRead = useCallback(() => {
@@ -279,13 +312,11 @@ export default function App() {
         </div>
       )}
 
-      {/* ── Top bar — business name left, buttons right ── */}
+      {/* Top bar */}
       <div style={barStyle}>
-        {/* Business name slot — edit this text */}
         <span style={{ fontSize: 16, fontWeight: 700, color: "#fff", letterSpacing: 0.3 }}>
           BizAdvise & LawAdvise
         </span>
-
         <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <button
             style={btnStyle("#fff", "#667eea")}
@@ -313,7 +344,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* Main layout */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <Sidebar
           users={users}
@@ -340,7 +370,6 @@ export default function App() {
         />
       </div>
 
-      {/* Connection dot */}
       <div style={{ position: "fixed", bottom: 12, right: 12, background: connected ? "#4caf50" : "#f44336", color: "#fff", padding: "4px 10px", borderRadius: 20, fontSize: 11, display: "flex", alignItems: "center", gap: 5, boxShadow: "0 2px 6px rgba(0,0,0,0.2)", zIndex: 999 }}>
         <span style={{ width: 7, height: 7, background: "#fff", borderRadius: "50%", animation: "pulse 1.2s infinite", display: "inline-block" }} />
         {connected ? "Live" : "Reconnecting…"}
@@ -348,8 +377,21 @@ export default function App() {
 
       {showBroadcast && <BroadcastModal users={users} onClose={() => setShowBroadcast(false)} />}
       {showAnalytics && <AnalyticsModal stats={stats} onClose={() => setShowAnalytics(false)} />}
-      {showConsultations && <ConsultationsModal users={users} onClose={() => setShowConsultations(false)} onSelectUser={selectUser} onUserDeleted={handleUserDeleted} />}
-      {editingUser && <EditUserModal user={editingUser} onClose={() => setEditingUser(null)} onSaved={handleUserSaved} />}
+      {showConsultations && (
+        <ConsultationsModal
+          users={users}
+          onClose={() => setShowConsultations(false)}
+          onSelectUser={selectUser}
+          onUserDeleted={handleUserDeleted}
+        />
+      )}
+      {editingUser && (
+        <EditUserModal
+          user={editingUser}
+          onClose={() => setEditingUser(null)}
+          onSaved={handleUserSaved}
+        />
+      )}
     </div>
   );
 }
