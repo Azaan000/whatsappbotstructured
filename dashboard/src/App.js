@@ -49,6 +49,10 @@ export default function App() {
   const consultationCount = unseenConsultPhones.size;
   const typingTimerRef = useRef(null);
   const pendingTempIds = useRef(new Set());
+  const usersRef = useRef([]);
+
+  // Keep usersRef in sync so handleUserTyping can read latest users
+  useEffect(() => { usersRef.current = users; }, [users]);
 
   const [showBroadcast, setShowBroadcast] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
@@ -86,7 +90,12 @@ export default function App() {
   const handleNewMessage = useCallback((data) => {
     setUsers((prev) => prev.map((u) =>
       u.phone === data.phone
-        ? { ...u, last: data.message?.substring(0, 50), total_messages: (u.total_messages || 0) + 1, last_seen: data.timestamp }
+        ? {
+            ...u,
+            last: data.message?.substring(0, 50),
+            total_messages: (u.total_messages || 0) + 1,
+            last_seen: data.timestamp,
+          }
         : u
     ));
 
@@ -101,12 +110,10 @@ export default function App() {
     }
 
     if (selectedPhoneRef.current === data.phone) {
-      setTyping(false);
-      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-
+      // Clear typing bubble only when bot AI reply arrives
       if (data.direction === "bot" && data.source === "ai") {
-        setTyping(true);
-        typingTimerRef.current = setTimeout(() => setTyping(false), 1200);
+        setTyping(false);
+        if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
       }
 
       if (data.direction === "user" || data.source === "ai") {
@@ -138,8 +145,14 @@ export default function App() {
     setUsers((prev) => prev.map((u) =>
       u.phone === data.phone ? { ...u, human_mode: data.human_mode } : u
     ));
-    if (selectedPhoneRef.current === data.phone)
+    if (selectedPhoneRef.current === data.phone) {
       setSelectedUser((prev) => ({ ...prev, human_mode: data.human_mode }));
+      // If switched to human mode, clear any typing bubble
+      if (data.human_mode) {
+        setTyping(false);
+        if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      }
+    }
     refreshAnalytics();
   }, [selectedPhoneRef, refreshAnalytics]);
 
@@ -153,9 +166,15 @@ export default function App() {
 
   const handleUserTyping = useCallback((data) => {
     if (selectedPhoneRef.current === data.phone && data.typing) {
-      setTyping(true);
-      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-      typingTimerRef.current = setTimeout(() => setTyping(false), 3000);
+      // Only show typing bubble if user is in AI mode — bot will reply
+      const currentUser = usersRef.current.find((u) => u.phone === data.phone);
+      const isAiMode = currentUser ? !currentUser.human_mode : true;
+      if (isAiMode) {
+        setTyping(true);
+        if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+        // Auto-clear after 15s as safety net
+        typingTimerRef.current = setTimeout(() => setTyping(false), 15000);
+      }
     }
   }, [selectedPhoneRef]);
 
@@ -283,6 +302,11 @@ export default function App() {
       setUsers((prev) => prev.map((u) =>
         u.phone === selectedPhone ? { ...u, human_mode: data.human_mode } : u
       ));
+      // If switching to human mode clear typing bubble
+      if (data.human_mode) {
+        setTyping(false);
+        if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      }
       await refreshAnalytics();
     } catch (e) { console.error("Toggle failed:", e); }
   }, [selectedPhone, refreshAnalytics]);
@@ -306,7 +330,10 @@ export default function App() {
       {loadError && (
         <div style={{ background: "#f44336", color: "#fff", padding: "8px 20px", fontSize: 13, textAlign: "center", flexShrink: 0 }}>
           Cannot connect to server. Make sure Flask is running on port 5000.
-          <button onClick={() => window.location.reload()} style={{ marginLeft: 12, padding: "2px 10px", background: "#fff", color: "#f44336", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+          <button
+            onClick={() => window.location.reload()}
+            style={{ marginLeft: 12, padding: "2px 10px", background: "#fff", color: "#f44336", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+          >
             Retry
           </button>
         </div>
@@ -330,7 +357,12 @@ export default function App() {
           >
             📋 Consultations
             {consultationCount > 0 && (
-              <span style={{ background: "#fff", color: "#e53935", borderRadius: "50%", width: 18, height: 18, fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <span style={{
+                background: "#fff", color: "#e53935",
+                borderRadius: "50%", width: 18, height: 18,
+                fontSize: 10, fontWeight: 700,
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
                 {consultationCount}
               </span>
             )}
@@ -344,6 +376,7 @@ export default function App() {
         </div>
       </div>
 
+      {/* Main layout */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <Sidebar
           users={users}
@@ -370,13 +403,29 @@ export default function App() {
         />
       </div>
 
-      <div style={{ position: "fixed", bottom: 12, right: 12, background: connected ? "#4caf50" : "#f44336", color: "#fff", padding: "4px 10px", borderRadius: 20, fontSize: 11, display: "flex", alignItems: "center", gap: 5, boxShadow: "0 2px 6px rgba(0,0,0,0.2)", zIndex: 999 }}>
-        <span style={{ width: 7, height: 7, background: "#fff", borderRadius: "50%", animation: "pulse 1.2s infinite", display: "inline-block" }} />
+      {/* Connection dot */}
+      <div style={{
+        position: "fixed", bottom: 12, right: 12,
+        background: connected ? "#4caf50" : "#f44336",
+        color: "#fff", padding: "4px 10px", borderRadius: 20,
+        fontSize: 11, display: "flex", alignItems: "center", gap: 5,
+        boxShadow: "0 2px 6px rgba(0,0,0,0.2)", zIndex: 999,
+      }}>
+        <span style={{
+          width: 7, height: 7, background: "#fff",
+          borderRadius: "50%", animation: "pulse 1.2s infinite",
+          display: "inline-block",
+        }} />
         {connected ? "Live" : "Reconnecting…"}
       </div>
 
-      {showBroadcast && <BroadcastModal users={users} onClose={() => setShowBroadcast(false)} />}
-      {showAnalytics && <AnalyticsModal stats={stats} onClose={() => setShowAnalytics(false)} />}
+      {/* Modals */}
+      {showBroadcast && (
+        <BroadcastModal users={users} onClose={() => setShowBroadcast(false)} />
+      )}
+      {showAnalytics && (
+        <AnalyticsModal stats={stats} onClose={() => setShowAnalytics(false)} />
+      )}
       {showConsultations && (
         <ConsultationsModal
           users={users}
