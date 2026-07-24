@@ -45,6 +45,7 @@ export default function App() {
   const [sending, setSending] = useState(false);
   const [typing, setTyping] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [waTokenError, setWaTokenError] = useState(null);
   const [unseenConsultPhones, setUnseenConsultPhones] = useState(new Set());
   const consultationCount = unseenConsultPhones.size;
   const typingTimerRef = useRef(null);
@@ -111,6 +112,14 @@ const handleNewMessage = useCallback((data) => {
   }
 
   if (selectedPhoneRef.current === data.phone) {
+    // Clear typing FIRST so the bubble is replaced by the message,
+    // matching WhatsApp's own behaviour, instead of the message
+    // rendering first and the dots lingering an extra frame.
+    if (data.direction === "bot" && data.source === "ai") {
+      setTyping(false);
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    }
+
     if (data.direction === "user" || data.source === "ai") {
       appendMessage({
         message: data.message,
@@ -122,13 +131,6 @@ const handleNewMessage = useCallback((data) => {
         media_path: data.media_path || "",
         whatsapp_message_id: data.whatsapp_message_id || "",
       });
-    }
-
-    // Clear typing bubble only when AI reply arrives
-    // Keep bubble visible while user message shows — bot is still processing
-    if (data.direction === "bot" && data.source === "ai") {
-      setTyping(false);
-      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     }
 
     if (data.direction === "bot" && data.source !== "ai" && data.whatsapp_message_id) {
@@ -187,6 +189,10 @@ const handleNewMessage = useCallback((data) => {
 
   const handleUserDeletedSocket = useCallback((data) => handleUserDeleted(data.phone), [handleUserDeleted]);
 
+  const handleWaTokenError = useCallback((data) => {
+    setWaTokenError(data.message);
+  }, []);
+
   const { connected } = useSocket({
     onNewUser: handleNewUser,
     onUserUpdate: handleUserUpdate,
@@ -196,6 +202,7 @@ const handleNewMessage = useCallback((data) => {
     onUserUpdated: handleUserUpdated,
     onUserTyping: handleUserTyping,
     onUserDeleted: handleUserDeletedSocket,
+    onWaTokenError: handleWaTokenError,
   });
 
   // ── Initial load ──────────────────────────────────────────────────────
@@ -335,6 +342,23 @@ const handleNewMessage = useCallback((data) => {
             style={{ marginLeft: 12, padding: "2px 10px", background: "#fff", color: "#f44336", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 12, fontWeight: 600 }}
           >
             Retry
+          </button>
+        </div>
+      )}
+
+      {waTokenError && (
+        <div style={{
+          background: "#ff6f00", color: "#fff",
+          padding: "10px 20px", fontSize: 13,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          flexShrink: 0, gap: 12,
+        }}>
+          <span>⚠️ {waTokenError}</span>
+          <button
+            onClick={() => setWaTokenError(null)}
+            style={{ background: "rgba(255,255,255,0.25)", border: "none", color: "#fff", borderRadius: 6, padding: "3px 10px", cursor: "pointer", fontSize: 12 }}
+          >
+            Dismiss
           </button>
         </div>
       )}
