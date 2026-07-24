@@ -87,56 +87,57 @@ export default function App() {
       setSelectedUser((prev) => ({ ...prev, ...data }));
   }, [selectedPhoneRef]);
 
-  const handleNewMessage = useCallback((data) => {
-    setUsers((prev) => prev.map((u) =>
-      u.phone === data.phone
-        ? {
-            ...u,
-            last: data.message?.substring(0, 50),
-            total_messages: (u.total_messages || 0) + 1,
-            last_seen: data.timestamp,
-          }
-        : u
-    ));
+  
+const handleNewMessage = useCallback((data) => {
+  setUsers((prev) => prev.map((u) =>
+    u.phone === data.phone
+      ? {
+          ...u,
+          last: data.message?.substring(0, 50),
+          total_messages: (u.total_messages || 0) + 1,
+          last_seen: data.timestamp,
+        }
+      : u
+  ));
 
-    if (data.direction === "user") {
-      incrementUnread(data.phone);
-      if (isConsultMessage(data.message) && selectedPhoneRef.current !== data.phone) {
-        const seen = getSeenConsults();
-        seen.delete(data.phone);
-        saveSeenConsults(seen);
-        setUnseenConsultPhones((prev) => new Set(prev).add(data.phone));
-      }
+  if (data.direction === "user") {
+    incrementUnread(data.phone);
+    if (isConsultMessage(data.message) && selectedPhoneRef.current !== data.phone) {
+      const seen = getSeenConsults();
+      seen.delete(data.phone);
+      saveSeenConsults(seen);
+      setUnseenConsultPhones((prev) => new Set(prev).add(data.phone));
+    }
+  }
+
+  if (selectedPhoneRef.current === data.phone) {
+    if (data.direction === "user" || data.source === "ai") {
+      appendMessage({
+        message: data.message,
+        direction: data.direction,
+        status: data.status,
+        timestamp: data.timestamp,
+        message_type: data.message_type || "text",
+        file_name: data.file_name || "",
+        media_path: data.media_path || "",
+        whatsapp_message_id: data.whatsapp_message_id || "",
+      });
     }
 
-    if (selectedPhoneRef.current === data.phone) {
-      // Clear typing bubble only when bot AI reply arrives
-      if (data.direction === "bot" && data.source === "ai") {
-        setTyping(false);
-        if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-      }
-
-      if (data.direction === "user" || data.source === "ai") {
-        appendMessage({
-          message: data.message,
-          direction: data.direction,
-          status: data.status,
-          timestamp: data.timestamp,
-          message_type: data.message_type || "text",
-          file_name: data.file_name || "",
-          media_path: data.media_path || "",
-          whatsapp_message_id: data.whatsapp_message_id || "",
-        });
-      }
-
-      if (data.direction === "bot" && data.source !== "ai" && data.whatsapp_message_id) {
-        updateMessageStatus(data.whatsapp_message_id, data.status);
-      }
-
-      if (data.direction === "user") markAsRead(data.phone);
+    // Clear typing bubble only when AI reply arrives
+    // Keep bubble visible while user message shows — bot is still processing
+    if (data.direction === "bot" && data.source === "ai") {
+      setTyping(false);
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     }
-  }, [selectedPhoneRef, incrementUnread, appendMessage, markAsRead, updateMessageStatus]);
 
+    if (data.direction === "bot" && data.source !== "ai" && data.whatsapp_message_id) {
+      updateMessageStatus(data.whatsapp_message_id, data.status);
+    }
+
+    if (data.direction === "user") markAsRead(data.phone);
+  }
+}, [selectedPhoneRef, incrementUnread, appendMessage, markAsRead, updateMessageStatus]);
   const handleStatusUpdate = useCallback((data) => {
     updateMessageStatus(data.whatsapp_message_id, data.status);
   }, [updateMessageStatus]);
@@ -166,18 +167,17 @@ export default function App() {
 
   const handleUserTyping = useCallback((data) => {
     if (selectedPhoneRef.current === data.phone && data.typing) {
-      // Only show typing bubble if user is in AI mode — bot will reply
       const currentUser = usersRef.current.find((u) => u.phone === data.phone);
       const isAiMode = currentUser ? !currentUser.human_mode : true;
       if (isAiMode) {
+        // Show bubble immediately — before user message renders
         setTyping(true);
         if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-        // Auto-clear after 15s as safety net
         typingTimerRef.current = setTimeout(() => setTyping(false), 15000);
       }
     }
   }, [selectedPhoneRef]);
-
+  
   const handleUserDeleted = useCallback((phone) => {
     setUsers((prev) => prev.filter((u) => u.phone !== phone));
     setUnseenConsultPhones((prev) => { const n = new Set(prev); n.delete(phone); return n; });
