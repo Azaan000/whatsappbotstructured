@@ -5,7 +5,7 @@ function statusIcon(status) {
   return { sent: "✓", delivered: "✓✓", read: "✓✓✓", sending: "⋯", failed: "⚠" }[status] || "";
 }
 function statusColor(status) {
-  return { read: "#ffffff", delivered: "#c8e6ff", sent: "#a0c4ff", failed: "#ff6b6b" }[status] || "#a0c4ff";
+  return { read: "#0000FF", delivered: "#7393B3", sent: "#7393B3", failed: "#ff6b6b" }[status] || "#a0c4ff";
 }
 function formatDateLabel(timestamp) {
   if (!timestamp) return null;

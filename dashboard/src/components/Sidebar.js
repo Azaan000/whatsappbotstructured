@@ -24,7 +24,7 @@ function avatarColor(phone) {
 
 export default function Sidebar({
   users, selectedPhone, connected, unreadCounts,
-  highlightedUsers, onSelect, onExportAll, onUserDeleted, onMarkAllRead,
+  highlightedUsers, bookedConsultPhones, onSelect, onExportAll, onUserDeleted, onMarkAllRead,
 }) {
   const [confirmPhone, setConfirmPhone] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -109,6 +109,7 @@ export default function Sidebar({
 
         {filtered.map((user) => {
           const isUnread = highlightedUsers.has(user.phone);
+          const isBooked = bookedConsultPhones?.has(user.phone);
           const count = unreadCounts[user.phone] || 0;
           const active = selectedPhone === user.phone;
           const initials = getInitials(user.name, user.phone);
@@ -117,7 +118,7 @@ export default function Sidebar({
           return (
             <div
               key={user.phone}
-              className={`${s.user} ${active ? s.active : ""} ${isUnread && !active ? s.unread : ""}`}
+              className={`${s.user} ${active ? s.active : ""} ${isUnread && !active ? s.unread : ""} ${isBooked && !active ? s.booked : ""}`}
               onClick={() => onSelect(user)}
             >
               {/* Avatar with mode dot */}
@@ -143,6 +144,9 @@ export default function Sidebar({
                     </span>
                     {user.name && (
                       <span className={s.subPhone}>{user.phone}</span>
+                    )}
+                    {isBooked && (
+                      <span className={s.bookedBadge} title="Consultation booked">📋</span>
                     )}
                   </div>
                   <div className={s.rightCol}>

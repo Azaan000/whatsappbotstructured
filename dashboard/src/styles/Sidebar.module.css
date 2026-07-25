@@ -144,6 +144,19 @@
   border-left-color: #ff9800;
 }
 
+/* Consultation just booked — red pulse until chat is opened */
+.booked {
+  background: #ffebee;
+  border-left-color: #f44336;
+  animation: bookedPulse 1.4s ease-in-out infinite;
+}
+.booked:hover { background: #ffcdd2; }
+
+@keyframes bookedPulse {
+  0%, 100% { background: #ffebee; }
+  50%      { background: #ffcdd2; }
+}
+
 /* ── Avatar ── */
 .avatarWrap {
   position: relative;
@@ -214,6 +227,11 @@
   font-size: 10px;
   color: #aaa;
   margin-top: 1px;
+}
+
+.bookedBadge {
+  font-size: 12px;
+  line-height: 1;
 }
 
 /* Time + badge column */

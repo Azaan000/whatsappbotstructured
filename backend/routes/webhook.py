@@ -19,6 +19,8 @@ webhook_bp = Blueprint("webhook", __name__)
 _executor = ThreadPoolExecutor(max_workers=10)
 _processed_ids = set()
 _user_service_context = {}
+_contact_collection = {}   # phone -> {"step": "awaiting_name"/"awaiting_mobile"/"awaiting_time", "name": ..., "mobile": ...}
+_user_context = {}         # phone -> "main" once a consultation flow completes (kept for future use)
 
 CONTACT = "03003029093 / 03332454111"
 MEDIA_FOLDER = "media_files"
@@ -294,6 +296,25 @@ ALL_SUB_RESPONSES = {**TEXT_SUB_RESPONSES, **BIZ_SUB_RESPONSES}
 SERVICE_MENU_IDS = set(ALL_SUB_MENUS.keys())
 BIZ_DIRECT_IDS = {"biz_ngo", "biz_digital", "biz_urgent", "biz_consult", "contact_us"}
 
+# ── Messages that mean "we've asked the user to share their contact info" ──
+# _send_text_reply checks against this set after every send; a match kicks
+# off the Name -> Mobile -> Best Time collection flow below, regardless of
+# which menu path (main menu, sub-menu number, or an interactive tap) led
+# there — they all funnel through _send_text_reply eventually.
+CONSULT_TRIGGER_TEXTS = {
+    BUTTON_RESPONSES["biz_consult"],
+    BUTTON_RESPONSES["contact_us"],
+    BUTTON_RESPONSES["nikah_consult"],
+    BUTTON_RESPONSES["court_consult"],
+    BUTTON_RESPONSES["divorce_consult"],
+    BUTTON_RESPONSES["custody_consult"],
+    BUTTON_RESPONSES["maintenance_consult"],
+    BUTTON_RESPONSES["property_consult"],
+    BUTTON_RESPONSES["inheritance_consult"],
+    BUTTON_RESPONSES["corporate_consult"],
+    BUTTON_RESPONSES["docs_consult"],
+}
+
 TEXT_MAIN_MENU_1 = """Welcome to *BizAdvise & LawAdvise Consulting* ⚖️🏢
 
 How can we assist you? Please reply with a number:
@@ -498,8 +519,19 @@ def _handle_message(msg, socketio, name=""):
 
         text_lower = text.lower()
 
+        # If we're mid-way through collecting Name / Mobile / Best Time,
+        # every text reply goes to that flow until it completes — this
+        # MUST be checked before MENU_TRIGGERS, otherwise a user typing
+        # something like "help" or "info" as their name/mobile/best-time
+        # answer would silently abort the booking flow and reset to the
+        # main menu instead of completing the consultation booking.
+        if phone in _contact_collection:
+            _handle_contact_collection(phone, text, socketio)
+            return
+
         if is_new or text_lower in MENU_TRIGGERS:
             _user_service_context.pop(phone, None)
+            _contact_collection.pop(phone, None)
             _executor.submit(_send_welcome_menu, phone, socketio)
             return
 
@@ -597,6 +629,47 @@ def _handle_message(msg, socketio, name=""):
             _executor.submit(_process_ai_reply, phone, text, socketio)
 
 
+def _handle_contact_collection(phone, text, socketio):
+    """Walks a user through Name -> Mobile -> Best Time to Call, then
+    emits a consultation_booked event so the dashboard can surface it."""
+    state = _contact_collection.get(phone, {})
+    step = state.get("step")
+
+    if step == "awaiting_name":
+        _contact_collection[phone]["name"] = text
+        _contact_collection[phone]["step"] = "awaiting_mobile"
+        _executor.submit(_send_text_reply, phone,
+                         "Thank you! Please share your *Mobile Number*:", socketio)
+
+    elif step == "awaiting_mobile":
+        _contact_collection[phone]["mobile"] = text
+        _contact_collection[phone]["step"] = "awaiting_time"
+        _executor.submit(_send_text_reply, phone,
+                         "Great! What is the *Best Time to Call* you?\n_(e.g. Morning, Afternoon, Evening or a specific time)_", socketio)
+
+    elif step == "awaiting_time":
+        name = state.get("name", "")
+        mobile = state.get("mobile", "")
+        best_time = text
+        del _contact_collection[phone]
+        confirmation = (
+            f"✅ *Thank you, {name}!*\n\n"
+            f"Our team will contact you at *{mobile}* during *{best_time}*.\n\n"
+            f"If urgent, you can also reach us at:\n📞 {CONTACT}"
+        )
+        _executor.submit(_send_text_reply, phone, confirmation, socketio)
+        _user_context[phone] = "main"
+        # Emit consultation booked event for dashboard notification
+        socketio.emit("consultation_booked", {
+            "phone": phone,
+            "name": name,
+            "mobile": mobile,
+            "best_time": best_time,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        })
+        print(f"[Consultation booked] {name} ({mobile}) — best time: {best_time}")
+
+
 def _send_welcome_menu(phone, socketio):
     try:
         success, wa_id = send_main_menu(phone)
@@ -638,6 +711,10 @@ def _send_text_reply(phone, text, socketio):
         save_message(phone, text, "bot", socketio,
                      status="sent" if success else "failed",
                      whatsapp_message_id=wa_id, source="ai")
+        # If this message was one of our "please share your contact info"
+        # prompts, start the Name -> Mobile -> Best Time collection flow.
+        if success and text in CONSULT_TRIGGER_TEXTS:
+            _contact_collection[phone] = {"step": "awaiting_name"}
     except Exception as e:
         print(f"Text reply error for {phone}: {e}")
 
