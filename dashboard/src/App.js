@@ -287,6 +287,12 @@ export default function App() {
   const handleConsultationBooked = useCallback((data) => {
     trace("[TRACE 2] handleConsultationBooked received:", data);
     const { phone, name, mobile, best_time } = data;
+    // If staff already has this exact chat open, they're watching the
+    // booking happen live — don't count it as "unseen" (it would inflate
+    // the Consultations badge for something they're actively looking at).
+    // Sound/notification/toast still fire either way since those are
+    // useful regardless of which chat is open.
+    const isViewingThisChat = selectedPhoneRef.current === phone;
 
     // 1. Play sound
     trace("[TRACE 3] calling playNotificationSound()");
@@ -298,20 +304,27 @@ export default function App() {
       `${name || phone} — ${mobile} — Best time: ${best_time}`
     );
 
-    // 3. Highlight user red in sidebar
-    setBookedConsultPhones((prev) => new Set(prev).add(phone));
+    if (isViewingThisChat) {
+      // Already watching it live — make sure it's recorded as seen
+      // rather than surfacing a red highlight/badge for a chat that's
+      // already open in front of them.
+      markConsultSeen(phone);
+    } else {
+      // 3. Highlight user red in sidebar
+      setBookedConsultPhones((prev) => new Set(prev).add(phone));
 
-    // 4. Mark as unseen consultation
-    const seen = getSeenConsults();
-    seen.delete(phone);
-    saveSeenConsults(seen);
-    setUnseenConsultPhones((prev) => new Set(prev).add(phone));
+      // 4. Mark as unseen consultation
+      const seen = getSeenConsults();
+      seen.delete(phone);
+      saveSeenConsults(seen);
+      setUnseenConsultPhones((prev) => new Set(prev).add(phone));
+    }
 
     // 5. Show in-app toast
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setConsultToast({ phone, name, mobile, best_time });
     toastTimerRef.current = setTimeout(() => setConsultToast(null), 8000);
-  }, []);
+  }, [selectedPhoneRef]);
 
   const { connected } = useSocket({
     onNewUser: handleNewUser,
@@ -373,7 +386,13 @@ export default function App() {
     const temp = { _id: tempId, message: text, direction: "bot", status: "sending", timestamp: new Date().toISOString(), message_type: "text", media_path: "", file_name: "" };
     pendingTempIds.current.add(tempId);
     appendMessage(temp);
-    try { await api.sendMessage(selectedPhone, text); updateTempStatus(tempId, "sent"); }
+    try {
+      const result = await api.sendMessage(selectedPhone, text);
+      // Attach the real whatsapp_message_id to THIS specific tempId right
+      // away, rather than leaving it to updateMessageStatus's fallback to
+      // guess which pending message a later status event belongs to.
+      updateTempStatus(tempId, "sent", { whatsapp_message_id: result?.message_id || "" });
+    }
     catch { removeMessage(temp); alert("Failed to send message."); }
     finally { pendingTempIds.current.delete(tempId); setSending(false); }
   }, [selectedPhone, sending, appendMessage, removeMessage, updateTempStatus]);
@@ -385,7 +404,10 @@ export default function App() {
     const temp = { _id: tempId, message: file.name, direction: "bot", status: "sending", timestamp: new Date().toISOString(), message_type: "file", file_name: file.name, media_path: "" };
     pendingTempIds.current.add(tempId);
     appendMessage(temp);
-    try { await api.sendFile(selectedPhone, file); updateTempStatus(tempId, "sent"); }
+    try {
+      const result = await api.sendFile(selectedPhone, file);
+      updateTempStatus(tempId, "sent", { whatsapp_message_id: result?.message_id || "" });
+    }
     catch { removeMessage(temp); alert("Failed to send file."); }
     finally { pendingTempIds.current.delete(tempId); setSending(false); }
   }, [selectedPhone, sending, appendMessage, removeMessage, updateTempStatus]);

@@ -2,6 +2,8 @@ import os
 import hmac
 import hashlib
 import time
+import threading
+from collections import deque
 import requests as http_requests
 import mimetypes as mt
 from datetime import datetime
@@ -17,7 +19,22 @@ from bot.whatsapp_handler import send_text, send_main_menu, send_service_menu
 webhook_bp = Blueprint("webhook", __name__)
 
 _executor = ThreadPoolExecutor(max_workers=10)
+
+# ── Duplicate-webhook-delivery guard ─────────────────────────────────────
+# WhatsApp retries webhook deliveries, so we track which message ids we've
+# already handled. Two fixes vs. the old plain `set()`:
+#   1. Bounded via a deque + set pair, evicting the OLDEST ids once we hit
+#      the cap — instead of `.clear()`-ing the whole cache, which used to
+#      forget everything at once and let old retried messages slip through
+#      and get reprocessed (duplicate AI replies / duplicate sends).
+#   2. Guarded by a lock so the check-and-reserve is atomic — two
+#      near-simultaneous webhook deliveries for the same message id can no
+#      longer both pass the "not seen yet" check before either records it.
 _processed_ids = set()
+_processed_ids_order = deque()
+_processed_lock = threading.Lock()
+MAX_PROCESSED_IDS = 10000
+
 _user_service_context = {}
 _contact_collection = {}   # phone -> {"step": "awaiting_name"/"awaiting_mobile"/"awaiting_time", "name": ..., "mobile": ...}
 _user_context = {}         # phone -> "main" once a consultation flow completes (kept for future use)
@@ -370,19 +387,40 @@ def _get_socketio():
     return current_app.extensions["socketio"]
 
 
-def _already_processed(msg_id):
+def _check_and_mark_processed(msg_id):
+    """Atomically check whether msg_id was already handled, and if not,
+    reserve it immediately — before returning — so a second, near-
+    simultaneous webhook delivery for the same id (WhatsApp retries do
+    happen) can't slip past this check before the first one records it.
+
+    Returns True if this message was already processed (skip it),
+    False if this call just claimed it (go ahead and process it).
+    """
     if not msg_id:
         return False
-    if msg_id in _processed_ids:
-        return True
+
+    with _processed_lock:
+        if msg_id in _processed_ids:
+            return True
+        # Reserve it now, inside the lock, so any concurrent duplicate
+        # request sees it in _processed_ids immediately.
+        _processed_ids.add(msg_id)
+        _processed_ids_order.append(msg_id)
+        # Evict the OLDEST entries once we're over the cap, instead of
+        # wiping the whole cache — keeps recent history intact so
+        # WhatsApp's delayed retries still get caught.
+        while len(_processed_ids_order) > MAX_PROCESSED_IDS:
+            oldest = _processed_ids_order.popleft()
+            _processed_ids.discard(oldest)
+
+    # Not seen in-memory — could still be a duplicate from before a
+    # server restart (which clears the in-memory cache), so fall back
+    # to checking the DB once.
     conn = get_db()
     cursor = conn.cursor()
     try:
         cursor.execute("SELECT id FROM messages WHERE whatsapp_message_id=?", (msg_id,))
-        exists = cursor.fetchone() is not None
-        if exists:
-            _processed_ids.add(msg_id)
-        return exists
+        return cursor.fetchone() is not None
     finally:
         conn.close()
 
@@ -486,13 +524,9 @@ def webhook():
 
                 for msg in value.get("messages", []):
                     msg_id = msg.get("id")
-                    if _already_processed(msg_id):
+                    if _check_and_mark_processed(msg_id):
                         print(f"[Webhook] Duplicate skipped: {msg_id}")
                         continue
-                    if msg_id:
-                        _processed_ids.add(msg_id)
-                    if len(_processed_ids) > 10000:
-                        _processed_ids.clear()
 
                     phone = msg["from"]
                     name = contacts.get(phone, "")

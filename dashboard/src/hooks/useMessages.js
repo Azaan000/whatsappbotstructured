@@ -56,16 +56,22 @@ export function useMessages(selectedPhone) {
         );
       }
 
-      // Fallback — update the most recent bot message that doesn't have
-      // a whatsapp_message_id yet (optimistic message waiting for confirmation)
-      const lastBotIndex = [...prev]
-        .reverse()
-        .findIndex((m) => m.direction === "bot" && !m.whatsapp_message_id);
+      // Fallback — this only fires for messages that don't yet carry a
+      // whatsapp_message_id at all (e.g. a broadcast from another
+      // dashboard tab that never got the id attached client-side).
+      // Match the OLDEST bot message still missing an id, not the most
+      // recent — sends resolve roughly in the order they were made, so
+      // picking "most recent" can misattribute a status update meant for
+      // an earlier message onto a newer one if two sends are in flight
+      // at once. `prev` is chronological (oldest first), so the first
+      // match here is the oldest pending one.
+      const pendingIndex = prev.findIndex(
+        (m) => m.direction === "bot" && !m.whatsapp_message_id
+      );
 
-      if (lastBotIndex !== -1) {
-        const realIndex = prev.length - 1 - lastBotIndex;
+      if (pendingIndex !== -1) {
         return prev.map((m, i) =>
-          i === realIndex
+          i === pendingIndex
             ? { ...m, status, whatsapp_message_id: waId }
             : m
         );
@@ -75,9 +81,13 @@ export function useMessages(selectedPhone) {
     });
   }, []);
 
-  const updateTempStatus = useCallback((tempId, status) => {
+  // extra: optional fields to merge in alongside status, e.g.
+  // { whatsapp_message_id } — lets the sender attach the real id the
+  // moment the API call resolves, instead of relying on the fallback
+  // above to guess which pending message a later broadcast belongs to.
+  const updateTempStatus = useCallback((tempId, status, extra = {}) => {
     setMessages((prev) =>
-      prev.map((m) => (m._id === tempId ? { ...m, status } : m))
+      prev.map((m) => (m._id === tempId ? { ...m, status, ...extra } : m))
     );
   }, []);
 
