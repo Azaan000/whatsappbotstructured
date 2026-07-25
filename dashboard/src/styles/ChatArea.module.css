@@ -123,9 +123,13 @@
 .bubbleNew { animation: bubbleFadeIn 0.2s ease-out forwards; }
 
 /* ── Typing bubble — left side (user is typing) ── */
-.typingBubbleWrap { align-self: flex-start; background: #e4e6eb; border-radius: 18px; border-bottom-left-radius: 4px; padding: 10px 16px; display: flex; align-items: center; gap: 4px; box-shadow: 0 1px 1px rgba(0,0,0,0.08); max-width: 80px; margin-bottom: 6px; }
+/* This represents OUR (bot/business) side composing a reply — right-
+   aligned and blue like .bubbleBot, not left/gray like the customer's
+   own bubbles, so it reads as "we're about to reply" not "customer is
+   typing something else". */
+.typingBubbleWrap { align-self: flex-end; background: #0b5cff; border-radius: 18px; border-bottom-right-radius: 4px; padding: 10px 16px; display: flex; align-items: center; gap: 4px; box-shadow: 0 1px 1px rgba(0,0,0,0.08); max-width: 80px; margin-bottom: 6px; }
 .typingDots { display: flex; align-items: center; gap: 4px; }
-.dot { width: 8px; height: 8px; background: #999; border-radius: 50%; animation: typingBounce 1s infinite ease-in-out; }
+.dot { width: 8px; height: 8px; background: rgba(255,255,255,0.85); border-radius: 50%; animation: typingBounce 1s infinite ease-in-out; }
 @keyframes typingBounce {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
   30%            { transform: translateY(-6px); opacity: 1; }

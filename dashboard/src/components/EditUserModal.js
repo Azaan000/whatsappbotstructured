@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import { api } from "../api/client";
 import s from "../styles/Modal.module.css";
 
@@ -6,20 +6,11 @@ export default function EditUserModal({ user, onClose, onSaved }) {
   const [tags, setTags] = useState(user.tags || "");
   const [notes, setNotes] = useState(user.notes || "");
   const [saving, setSaving] = useState(false);
-  const [firstSeen, setFirstSeen] = useState(null);
+  // `user` already comes from the /users endpoint (models/user.py's
+  // get_all_users), which includes first_seen — no need to refetch every
+  // user in the system just to read one field we already have.
+  const firstSeen = user.first_seen || null;
   const modalRef = useRef(null);
-
-  // Fetch first seen date from user data
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const users = await api.getUsers();
-        const found = users.find((u) => u.phone === user.phone);
-        if (found?.first_seen) setFirstSeen(found.first_seen);
-      } catch {}
-    };
-    fetchUser();
-  }, [user.phone]);
 
   const handleOverlay = (e) => {
     if (!modalRef.current?.contains(e.target)) onClose();

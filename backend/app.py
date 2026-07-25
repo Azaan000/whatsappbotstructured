@@ -41,15 +41,19 @@ init_db()
 
 
 def _run_media_cleanup():
-    """Background thread: clean up media files older than 30 days, runs every 24h."""
+    """Background thread: clean up media files older than 30 days.
+    Runs once shortly after startup (so a server that's restarted daily
+    for deploys isn't silently skipping cleanup forever), then every
+    24h after that."""
     from bot.whatsapp_handler import cleanup_old_media
+    time.sleep(60)  # brief delay so this doesn't compete with startup
     while True:
-        time.sleep(86400)  # wait 24 hours before first run
         try:
             deleted, freed = cleanup_old_media(days=30)
             print(f"[Scheduler] Media cleanup done: {deleted} files, {freed/1024/1024:.1f} MB freed")
         except Exception as e:
             print(f"[Scheduler] Media cleanup error: {e}")
+        time.sleep(86400)
 
 
 # Start background cleanup thread

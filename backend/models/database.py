@@ -30,8 +30,13 @@ def init_db():
 
     try:
         cursor.execute("ALTER TABLE users ADD COLUMN name TEXT DEFAULT ''")
-    except:
-        pass
+    except sqlite3.OperationalError as e:
+        # Expected on every run after the first — the column already
+        # exists. A bare `except: pass` here would also silently swallow
+        # genuine problems (disk full, corrupt db, locked file, etc.),
+        # so only ignore the specific "duplicate column" case.
+        if "duplicate column name" not in str(e).lower():
+            print(f"init_db migration warning: {e}")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS messages (

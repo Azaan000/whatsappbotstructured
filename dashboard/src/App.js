@@ -219,7 +219,11 @@ export default function App() {
         });
       }
 
-      if (data.direction === "bot" && data.source === "ai") {
+      // Any outgoing message to this customer means a reply just went
+      // out — clear the typing indicator regardless of whether it came
+      // from the AI or from staff manually jumping in, since either way
+      // "still composing" is now stale.
+      if (data.direction === "bot") {
         setTyping(false);
         if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
       }
@@ -265,7 +269,11 @@ export default function App() {
       if (isAiMode) {
         setTyping(true);
         if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-        typingTimerRef.current = setTimeout(() => setTyping(false), 15000);
+        // Safety-net only — normally this gets cleared the instant the
+        // actual reply is sent (see handleNewMessage above). This just
+        // prevents it from hanging forever if a reply never arrives
+        // for some reason (failed send, unexpected code path, etc.).
+        typingTimerRef.current = setTimeout(() => setTyping(false), 8000);
       }
     }
   }, [selectedPhoneRef]);

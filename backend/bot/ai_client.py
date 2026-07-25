@@ -93,11 +93,19 @@ KNOWLEDGE BASE:
             data = res.json()
 
             if "choices" in data:
-                reply = data["choices"][0]["message"]["content"]
-                return _clean_reply(reply)
+                reply = (data["choices"][0].get("message", {}) or {}).get("content", "") or ""
+                cleaned = _clean_reply(reply)
+                if not cleaned:
+                    # Model returned nothing usable — empty content, or a
+                    # response that was ONLY metadata lines that _clean_reply
+                    # stripped out. Sending "" to WhatsApp either fails the
+                    # API call or shows an empty bubble, so fall back instead.
+                    print(f"AI returned empty/unusable reply, raw content: {reply!r}")
+                    return FALLBACK_REPLY
+                return cleaned
 
             print(f"AI unexpected response: {data}")
-            return "Sorry, I'm having trouble right now. Please try again."
+            return FALLBACK_REPLY
 
         except requests.Timeout:
             print(f"AI timeout (attempt {attempt + 1})")
@@ -113,8 +121,16 @@ KNOWLEDGE BASE:
     return "Server error. Please try again."
 
 
+FALLBACK_REPLY = (
+    "For this matter, I recommend speaking directly with one of our "
+    "legal experts who can assist you better."
+)
+
+
 def _clean_reply(text: str) -> str:
     """Remove metadata lines that some models append to responses."""
+    if not text or not text.strip():
+        return ""
     lines = text.strip().split("\n")
     clean_lines = []
     skip_prefixes = (
