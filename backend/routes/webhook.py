@@ -3,6 +3,7 @@ import hmac
 import hashlib
 import time
 import threading
+import re
 from collections import deque
 import requests as http_requests
 import mimetypes as mt
@@ -498,10 +499,15 @@ def verify():
 def webhook():
     signature = request.headers.get("X-Hub-Signature-256", "")
     if not _verify_signature(request.data, signature):
-        print("Invalid webhook signature — request rejected")
+        print("[Webhook] Invalid signature — request rejected")
         return "Forbidden", 403
 
-    data = request.get_json()
+    data = request.get_json(silent=True)
+    print(f"[Webhook] POST received, entries={len(data.get('entry', [])) if data else 0}")
+    if not data:
+        print("[Webhook] Empty/invalid JSON body — nothing to process")
+        return "OK", 200
+
     socketio = _get_socketio()
 
     try:
@@ -522,8 +528,13 @@ def webhook():
                     if msg_id and status:
                         update_message_status(msg_id, status, socketio)
 
-                for msg in value.get("messages", []):
+                incoming_messages = value.get("messages", [])
+                print(f"[Webhook] {len(incoming_messages)} message(s) in this payload")
+
+                for msg in incoming_messages:
                     msg_id = msg.get("id")
+                    print(f"[Webhook] Handling message id={msg_id} type={msg.get('type')} from={msg.get('from')}")
+
                     if _check_and_mark_processed(msg_id):
                         print(f"[Webhook] Duplicate skipped: {msg_id}")
                         continue
@@ -531,11 +542,36 @@ def webhook():
                     phone = msg["from"]
                     name = contacts.get(phone, "")
                     _handle_message(msg, socketio, name=name)
+                    print(f"[Webhook] Finished handling {msg_id}")
 
     except Exception as e:
-        print(f"Webhook error: {e}")
+        print(f"[Webhook] ERROR while processing: {e}")
+        import traceback
+        traceback.print_exc()
 
     return "OK", 200
+
+
+_MENU_SELECTION_RE = re.compile(
+    r'^(?:option|opt|no\.?|number|#)?\s*[:\-]?\s*\(?\s*(\d{1,2})\s*\)?\s*[.\)]?$',
+    re.IGNORECASE,
+)
+
+
+def _extract_menu_selection(text):
+    """Recognizes a menu-number reply even with the punctuation/wording
+    real customers actually type — '1', '1.', '(2)', '#3', 'Option 4',
+    'no. 5' — while still refusing to match ordinary sentences that
+    merely happen to contain a digit ('call after 5pm', 'I have 2
+    kids'), since the whole (stripped) message must match end-to-end.
+    Returns the number as a string (e.g. '1'), or None if this doesn't
+    look like a menu selection at all.
+    """
+    text = (text or "").strip()
+    if not text:
+        return None
+    match = _MENU_SELECTION_RE.match(text)
+    return match.group(1) if match else None
 
 
 def _handle_message(msg, socketio, name=""):
@@ -544,6 +580,18 @@ def _handle_message(msg, socketio, name=""):
     msg_id = msg.get("id")
 
     is_new = save_user(phone, socketio, name=name)
+
+    # A brand-new contact's first message might not be plain text at all
+    # — a photo of their CNIC, a voice note, a shared location. Without
+    # this, only the "text" branch below ever greets a new user, so
+    # anyone whose first contact is a photo/document/etc. gets total
+    # silence. The text branch handles its own is_new welcome (it also
+    # needs to check MENU_TRIGGERS at the same time), so skip it there
+    # to avoid sending the welcome menu twice.
+    if is_new and msg_type != "text":
+        _user_service_context.pop(phone, None)
+        _contact_collection.pop(phone, None)
+        _executor.submit(_send_welcome_menu, phone, socketio)
 
     if msg_type == "text":
         text = msg["text"]["body"].strip()
@@ -577,14 +625,22 @@ def _handle_message(msg, socketio, name=""):
 
         if phone in _user_service_context:
             service = _user_service_context[phone]
-            response = ALL_SUB_RESPONSES.get(service, {}).get(text)
+            selection = _extract_menu_selection(text)
+            response = ALL_SUB_RESPONSES.get(service, {}).get(selection) if selection else None
             if response:
                 _executor.submit(_send_text_reply, phone, response, socketio)
                 del _user_service_context[phone]
                 return
+            # Didn't match this submenu — the user went off-script (asked
+            # something free-form) or mistyped a number. Clear the stale
+            # context so a LATER message (e.g. a genuine new main-menu
+            # number) isn't misinterpreted as still answering this old
+            # submenu, then fall through to check the main menu / AI below.
+            del _user_service_context[phone]
 
-        if text in TEXT_SERVICE_MENUS:
-            title, service_id = TEXT_SERVICE_MENUS[text]
+        selection = _extract_menu_selection(text)
+        if selection and selection in TEXT_SERVICE_MENUS:
+            title, service_id = TEXT_SERVICE_MENUS[selection]
             if service_id in SERVICE_MENU_IDS:
                 _user_service_context[phone] = service_id
                 _executor.submit(_send_service_menu_safe, phone, service_id, socketio)
@@ -661,6 +717,39 @@ def _handle_message(msg, socketio, name=""):
         mode = get_user_mode(phone)
         if mode == 0:
             _executor.submit(_process_ai_reply, phone, text, socketio)
+
+    elif msg_type == "location":
+        loc = msg.get("location", {})
+        lat, lng = loc.get("latitude"), loc.get("longitude")
+        label = loc.get("name") or loc.get("address") or ""
+        display_text = f"📍 Shared location{f' — {label}' if label else ''}"
+        if lat is not None and lng is not None:
+            display_text += f" ({lat}, {lng})"
+        save_message(phone, display_text, "user", socketio,
+                     status="delivered", whatsapp_message_id=msg_id,
+                     message_type="location")
+
+    elif msg_type == "contacts":
+        contact_cards = msg.get("contacts", [])
+        names = [
+            c.get("name", {}).get("formatted_name", "Contact")
+            for c in contact_cards
+        ] or ["a contact"]
+        display_text = f"👤 Shared contact: {', '.join(names)}"
+        save_message(phone, display_text, "user", socketio,
+                     status="delivered", whatsapp_message_id=msg_id,
+                     message_type="contacts")
+
+    else:
+        # Catch-all for anything not explicitly handled above (stickers,
+        # reactions, polls, unsupported/future WhatsApp message types).
+        # Previously these were silently dropped — not even saved — so
+        # staff had no idea the customer sent anything at all. At minimum
+        # always record that something arrived.
+        print(f"[Webhook] Unhandled message type '{msg_type}' from {phone} — saving a placeholder")
+        save_message(phone, f"[Unsupported message type: {msg_type}]", "user", socketio,
+                     status="delivered", whatsapp_message_id=msg_id,
+                     message_type=msg_type)
 
 
 def _handle_contact_collection(phone, text, socketio):
