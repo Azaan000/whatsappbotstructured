@@ -101,12 +101,10 @@ def get_all_users():
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            SELECT u.phone, u.name, u.human_mode, u.tags, u.notes,
-                   u.total_messages, u.first_seen, u.last_seen,
-                   (SELECT message FROM messages m
-                    WHERE m.phone = u.phone ORDER BY id DESC LIMIT 1) AS last_message
-            FROM users u
-            ORDER BY u.last_seen DESC
+            SELECT phone, name, human_mode, tags, notes,
+                   total_messages, first_seen, last_seen, last_message
+            FROM users
+            ORDER BY last_seen DESC
         """)
         rows = cursor.fetchall()
         return [

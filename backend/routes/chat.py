@@ -1,5 +1,6 @@
 import os
 import csv
+import time as _time
 import urllib.parse
 from datetime import datetime
 from io import StringIO, BytesIO
@@ -12,6 +13,8 @@ from models.message import save_message, get_messages, get_all_messages_for_expo
 from models.database import get_db
 from bot.whatsapp_handler import send_text, send_media, resolve_media_type
 from utils.auth import require_auth
+
+_START_TIME = _time.time()
 
 chat_bp = Blueprint("chat", __name__)
 
@@ -205,9 +208,28 @@ def export_csv():
 
 @chat_bp.route("/health", methods=["GET"])
 def health():
-    return jsonify({
-        "status": "ok",
-        "whatsapp": bool(os.getenv("WHATSAPP_TOKEN")),
-        "openrouter": bool(os.getenv("OPENROUTER_API_KEY")),
+    # Previously this only checked whether env vars were SET, not whether
+    # the things they configure actually WORK. A monitoring tool hitting
+    # this endpoint would see "status: ok" even with a fully broken
+    # database connection. Now it actually attempts a query.
+    db_ok = True
+    db_error = None
+    try:
+        conn = get_db()
+        conn.execute("SELECT 1")
+        conn.close()
+    except Exception as e:
+        db_ok = False
+        db_error = str(e)
+
+    overall_status = "ok" if db_ok else "degraded"
+
+    payload = {
+        "status": overall_status,
+        "database": "ok" if db_ok else f"error: {db_error}",
+        "whatsapp_configured": bool(os.getenv("WHATSAPP_TOKEN")),
+        "openrouter_configured": bool(os.getenv("OPENROUTER_API_KEY")),
+        "uptime_seconds": round(_time.time() - _START_TIME),
         "timestamp": datetime.now().isoformat(),
-    })
+    }
+    return jsonify(payload), (200 if db_ok else 503)

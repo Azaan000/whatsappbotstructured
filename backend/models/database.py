@@ -24,7 +24,8 @@ def init_db():
             human_mode     INTEGER DEFAULT 0,
             tags           TEXT DEFAULT '',
             notes          TEXT DEFAULT '',
-            total_messages INTEGER DEFAULT 0
+            total_messages INTEGER DEFAULT 0,
+            last_message   TEXT DEFAULT ''
         )
     """)
 
@@ -37,6 +38,26 @@ def init_db():
         # so only ignore the specific "duplicate column" case.
         if "duplicate column name" not in str(e).lower():
             print(f"init_db migration warning: {e}")
+
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN last_message TEXT DEFAULT ''")
+    except sqlite3.OperationalError as e:
+        if "duplicate column name" not in str(e).lower():
+            print(f"init_db migration warning: {e}")
+
+    # Backfill last_message for any existing rows created before this
+    # column existed (a fresh install has no users yet, so this is a
+    # no-op; on an upgrade it runs once and self-heals the data).
+    cursor.execute("""
+        UPDATE users
+        SET last_message = (
+            SELECT message FROM messages m
+            WHERE m.phone = users.phone
+            ORDER BY m.id DESC LIMIT 1
+        )
+        WHERE (last_message IS NULL OR last_message = '')
+          AND EXISTS (SELECT 1 FROM messages m WHERE m.phone = users.phone)
+    """)
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS messages (

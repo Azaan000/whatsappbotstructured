@@ -1,5 +1,8 @@
 from datetime import datetime
 from models.database import get_db
+from utils.logger import get_logger
+
+log = get_logger(__name__)
 
 
 def save_message(
@@ -28,9 +31,20 @@ def save_message(
         )
         msg_id = cursor.lastrowid
 
+        # Kept in sync here (same row we're already updating for
+        # total_messages/last_seen) so get_all_users can read it directly
+        # instead of running a per-user correlated subquery against the
+        # messages table — matters once this table has real volume.
+        if message:
+            last_message_preview = message[:100]
+        elif message_type != "text":
+            last_message_preview = f"[{message_type}]"
+        else:
+            last_message_preview = ""
+
         cursor.execute(
-            "UPDATE users SET total_messages = total_messages + 1, last_seen=? WHERE phone=?",
-            (now, phone),
+            "UPDATE users SET total_messages = total_messages + 1, last_seen=?, last_message=? WHERE phone=?",
+            (now, last_message_preview, phone),
         )
         conn.commit()
 
@@ -63,7 +77,7 @@ def save_message(
 
         return msg_id
     except Exception as e:
-        print(f"save_message error: {e}")
+        log.error(f"save_message error: {e}")
         return None
     finally:
         conn.close()
@@ -97,8 +111,8 @@ def update_message_status(whatsapp_message_id, status, socketio):
         new_rank = _STATUS_RANK.get(status, 0)
 
         if new_rank < current_rank and status != "failed":
-            print(
-                f"[Status] Ignoring out-of-order '{status}' "
+            log.info(
+                f"Ignoring out-of-order '{status}' "
                 f"(already '{current_status}') for {whatsapp_message_id}"
             )
             return
@@ -115,7 +129,7 @@ def update_message_status(whatsapp_message_id, status, socketio):
             "phone": row["phone"],
         })
     except Exception as e:
-        print(f"update_message_status error: {e}")
+        log.error(f"update_message_status error: {e}")
     finally:
         conn.close()
 
@@ -155,7 +169,7 @@ def get_messages(phone, search=""):
             for r in rows
         ]
     except Exception as e:
-        print(f"get_messages error: {e}")
+        log.error(f"get_messages error: {e}")
         return []
     finally:
         conn.close()
@@ -176,7 +190,7 @@ def get_all_messages_for_export(phone=None):
             )
         return cursor.fetchall()
     except Exception as e:
-        print(f"get_all_messages_for_export error: {e}")
+        log.error(f"get_all_messages_for_export error: {e}")
         return []
     finally:
         conn.close()

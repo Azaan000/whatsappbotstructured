@@ -16,6 +16,9 @@ from models.message import save_message, update_message_status
 from models.database import get_db
 from bot.ai_client import ask_ai
 from bot.whatsapp_handler import send_text, send_main_menu, send_service_menu
+from utils.logger import get_logger
+
+log = get_logger(__name__)
 
 webhook_bp = Blueprint("webhook", __name__)
 
@@ -42,6 +45,29 @@ _user_context = {}         # phone -> "main" once a consultation flow completes 
 
 CONTACT = "03003029093 / 03332454111"
 MEDIA_FOLDER = "media_files"
+
+# Marker phrase embedded in every choice-gated prompt below — used to
+# detect "this message just asked the customer to choose between a
+# callback and calling us directly" without relying on an exact-string
+# match against the whole message (fragile — breaks the instant the
+# wording changes even slightly). See _is_consult_choice_prompt().
+_CALLBACK_CHOICE_MARKER = "call you back? Reply:"
+
+
+def _consult_choice_message(intro: str) -> str:
+    """Shared template for 'Talk to Expert' / 'Talk to Lawyer' style
+    replies — as opposed to explicit 'Book Consultation' replies, these
+    give the phone number immediately and ASK whether the customer wants
+    a callback, rather than assuming it and immediately demanding their
+    name/mobile/time."""
+    return (
+        f"{intro}\n\n"
+        f"📞 Call or WhatsApp us directly: {CONTACT}\n\n"
+        f"Would you like our team to call you back? Reply:\n"
+        f"1️⃣ Yes, call me back\n"
+        f"2️⃣ No thanks, I'll reach out myself"
+    )
+
 
 # ── All your existing BUTTON_RESPONSES, BIZ_SUB_MENU, etc. ───────────────
 # (keeping them exactly as you have them)
@@ -129,15 +155,14 @@ BUTTON_RESPONSES = {
         f"• Legal Notice Received → {CONTACT}\n\n"
         "Our team is ready to assist you right away."
     ),
-    "biz_consult": (
-        "👨‍💼 *Talk to an Expert*\n\n"
-        "Our consultants are available to help you.\n\n"
-        f"📞 Call or WhatsApp: {CONTACT}\n\n"
-        "Please share your Name, Mobile Number, and Best Time to Call and we will get back to you shortly."
+    "biz_consult": _consult_choice_message(
+        "👨‍💼 *Talk to an Expert*\n\nOur consultants are available to help you."
     ),
     "nikah_procedure": f"📋 *Online Nikah Procedure:*\n\n• At least one party must be residing outside Pakistan.\n• The legal process is identical to a conventional Nikah.\n• One party participates remotely through a secure online platform.\n\nWould you like to book a consultation with our legal team?",
     "nikah_documents": f"📄 *Required Documents for Online Nikah:*\n\nFrom both parties:\n• Valid CNIC / NICOP or Passport\n• Recent passport-size photographs\n• 2 Witnesses (CNIC of both witnesses)\n\nWould you like to book a consultation?",
-    "nikah_consult": "💬 Our legal team will be in touch with you shortly to assist with your Online Nikah. Please share your preferred contact time if needed.",
+    "nikah_consult": _consult_choice_message(
+        "💬 *Online Nikah — Talk to a Lawyer*"
+    ),
     "court_procedure": "📋 *Court Marriage Procedure:*\n\n• Both parties must be present in person.\n• All legal requirements are the same as a conventional Nikah.\n\nWould you like to book a consultation?",
     "court_documents": "📄 *Required Documents for Court Marriage:*\n\nFrom both parties:\n• Valid CNIC / NICOP or Passport\n• Recent passport-size photographs\n• 2 Witnesses (CNIC of both witnesses)\n\nWould you like to book a consultation?",
     "court_consult": "💬 Our legal team will be in touch shortly to assist you with Court Marriage.",
@@ -146,23 +171,31 @@ BUTTON_RESPONSES = {
     "divorce_consult": "💬 Our legal expert will contact you shortly to discuss your Divorce / Khula case. Your matter will be handled with full confidentiality.",
     "custody_procedure": "📋 *Child Custody / Guardianship:*\n\nThis matter requires a detailed legal assessment. Our legal team will be happy to assist you personally.",
     "custody_timeline": "⏳ *Timeline:*\n\nEach case is unique; the estimated timeline may vary.",
-    "custody_consult": "💬 Our legal expert will contact you shortly regarding Child Custody / Guardianship.",
+    "custody_consult": _consult_choice_message(
+        "💬 *Child Custody / Guardianship — Talk to an Expert*"
+    ),
     "maintenance_procedure": "📋 *Maintenance (Nafaqa) / Dowery:*\n\nThis matter cannot be accurately assessed through chat alone. Our legal team will assist you personally.",
     "maintenance_timeline": "⏳ *Timeline:*\n\nEach case is unique; the estimated timeline may vary.",
-    "maintenance_consult": "💬 Our legal expert will contact you shortly regarding your Maintenance / Dowery matter.",
+    "maintenance_consult": _consult_choice_message(
+        "💬 *Maintenance / Dowery — Talk to an Expert*"
+    ),
     "property_procedure": "📋 *Property Law:*\n\nThis requires a detailed legal consultation. Please connect with one of our lawyers.",
     "property_timeline": "⏳ *Timeline:*\n\nThe duration depends on the legal process and circumstances of your case.",
     "property_consult": "💬 Our property law expert will contact you shortly.",
     "inheritance_procedure": "📋 *Inheritance:*\n\nThis requires a detailed legal consultation. Please connect with one of our lawyers.",
     "inheritance_timeline": "⏳ *Timeline:*\n\nThe duration depends on the legal process and circumstances of your case.",
-    "inheritance_consult": "💬 Our legal expert will contact you shortly regarding your Inheritance matter.",
+    "inheritance_consult": _consult_choice_message(
+        "💬 *Inheritance — Talk to an Expert*"
+    ),
     "corporate_procedure": "📋 *Corporate Law:*\n\nThis requires a detailed legal consultation. Please connect with one of our lawyers.",
     "corporate_timeline": "⏳ *Timeline:*\n\nThe duration depends on the legal process and circumstances of your case.",
-    "corporate_consult": "💬 Our corporate law expert will contact you shortly.",
+    "corporate_consult": _consult_choice_message(
+        "💬 *Corporate Law — Talk to an Expert*"
+    ),
     "docs_procedure": "📋 *Legal Documentation:*\n\nThis requires a detailed legal consultation. Our legal team can assist with document drafting and verification.",
     "docs_timeline": "⏳ *Timeline:*\n\nThe duration depends on the type and complexity of documentation required.",
     "docs_consult": "💬 Our legal team will contact you shortly to assist with your documentation needs.",
-    "contact_us": f"📞 *Contact Us:*\n\nOur team will be in touch with you shortly.\n\n📱 {CONTACT}\n\nPlease share your Name, Mobile Number, and Best Time to Call.",
+    "contact_us": _consult_choice_message("📞 *Contact Us*"),
 }
 
 TEXT_SUB_MENU = {
@@ -319,19 +352,46 @@ BIZ_DIRECT_IDS = {"biz_ngo", "biz_digital", "biz_urgent", "biz_consult", "contac
 # off the Name -> Mobile -> Best Time collection flow below, regardless of
 # which menu path (main menu, sub-menu number, or an interactive tap) led
 # there — they all funnel through _send_text_reply eventually.
+# "Book Consultation" labeled paths — the customer already explicitly
+# chose to book, so go straight into the Name -> Mobile -> Best Time
+# collection flow, same as before.
 CONSULT_TRIGGER_TEXTS = {
-    BUTTON_RESPONSES["biz_consult"],
-    BUTTON_RESPONSES["contact_us"],
-    BUTTON_RESPONSES["nikah_consult"],
     BUTTON_RESPONSES["court_consult"],
     BUTTON_RESPONSES["divorce_consult"],
-    BUTTON_RESPONSES["custody_consult"],
-    BUTTON_RESPONSES["maintenance_consult"],
     BUTTON_RESPONSES["property_consult"],
-    BUTTON_RESPONSES["inheritance_consult"],
-    BUTTON_RESPONSES["corporate_consult"],
     BUTTON_RESPONSES["docs_consult"],
 }
+
+# "Talk to Expert" / "Talk to Lawyer" labeled paths — more ambiguous
+# intent (could just want the phone number), so give the number
+# immediately and ask whether they'd like a callback before collecting
+# any contact info. Detected via _is_consult_choice_prompt()'s marker
+# phrase (see _consult_choice_message above), not exact text matching.
+
+
+def _is_consult_choice_prompt(text: str) -> bool:
+    return _CALLBACK_CHOICE_MARKER in text
+
+
+def _interpret_yes_no(text: str):
+    """Tolerant yes/no interpretation for the callback-choice step —
+    accepts a numbered reply (1/2, reusing the same tolerant menu-number
+    matcher used elsewhere) as well as natural language. Returns 'yes',
+    'no', or None if it can't tell."""
+    selection = _extract_menu_selection(text)
+    if selection == "1":
+        return "yes"
+    if selection == "2":
+        return "no"
+
+    lower = text.strip().lower()
+    yes_words = {"yes", "yeah", "yup", "sure", "ok", "okay", "haan", "ji", "yh", "y"}
+    no_words = {"no", "nah", "nope", "nahi", "n"}
+    if lower in yes_words or "call me" in lower or "call back" in lower or "callback" in lower:
+        return "yes"
+    if lower in no_words or "myself" in lower or "i'll call" in lower or "i will call" in lower:
+        return "no"
+    return None
 
 TEXT_MAIN_MENU_1 = """Welcome to *BizAdvise & LawAdvise Consulting* ⚖️🏢
 
@@ -449,7 +509,7 @@ def _download_whatsapp_media(media_id, media_type):
             headers=headers, timeout=10
         )
         if url_res.status_code != 200:
-            print(f"Failed to get media URL: {url_res.text}")
+            log.error(f"Failed to get media URL: {url_res.text}")
             return None, None
 
         media_url = url_res.json().get("url")
@@ -459,7 +519,7 @@ def _download_whatsapp_media(media_id, media_type):
         # Step 2: download the file
         dl_res = http_requests.get(media_url, headers=headers, timeout=30)
         if dl_res.status_code != 200:
-            print(f"Failed to download media: {dl_res.status_code}")
+            log.error(f"Failed to download media: {dl_res.status_code}")
             return None, None
 
         # Step 3: determine extension from content-type
@@ -477,11 +537,11 @@ def _download_whatsapp_media(media_id, media_type):
         with open(filepath, "wb") as f:
             f.write(dl_res.content)
 
-        print(f"Media saved: {filepath}")
+        log.info(f"Media saved: {filepath}")
         return filepath, filename
 
     except Exception as e:
-        print(f"_download_whatsapp_media error: {e}")
+        log.error(f"_download_whatsapp_media error: {e}")
         return None, None
 
 
@@ -489,7 +549,7 @@ def _download_whatsapp_media(media_id, media_type):
 def verify():
     verify_token = os.getenv("VERIFY_TOKEN")
     incoming = request.args.get("hub.verify_token")
-    print(f"[Webhook verify] incoming='{incoming}' expected='{verify_token}'")
+    log.info(f"Webhook verify: incoming='{incoming}' expected='{verify_token}'")
     if incoming and incoming == verify_token:
         return request.args.get("hub.challenge")
     return "Forbidden", 403
@@ -499,13 +559,13 @@ def verify():
 def webhook():
     signature = request.headers.get("X-Hub-Signature-256", "")
     if not _verify_signature(request.data, signature):
-        print("[Webhook] Invalid signature — request rejected")
+        log.warning("Invalid webhook signature — request rejected")
         return "Forbidden", 403
 
     data = request.get_json(silent=True)
-    print(f"[Webhook] POST received, entries={len(data.get('entry', [])) if data else 0}")
+    log.info(f"POST received, entries={len(data.get('entry', [])) if data else 0}")
     if not data:
-        print("[Webhook] Empty/invalid JSON body — nothing to process")
+        log.warning("Empty/invalid JSON body — nothing to process")
         return "OK", 200
 
     socketio = _get_socketio()
@@ -529,23 +589,23 @@ def webhook():
                         update_message_status(msg_id, status, socketio)
 
                 incoming_messages = value.get("messages", [])
-                print(f"[Webhook] {len(incoming_messages)} message(s) in this payload")
+                log.info(f"{len(incoming_messages)} message(s) in this payload")
 
                 for msg in incoming_messages:
                     msg_id = msg.get("id")
-                    print(f"[Webhook] Handling message id={msg_id} type={msg.get('type')} from={msg.get('from')}")
+                    log.info(f"Handling message id={msg_id} type={msg.get('type')} from={msg.get('from')}")
 
                     if _check_and_mark_processed(msg_id):
-                        print(f"[Webhook] Duplicate skipped: {msg_id}")
+                        log.info(f"Duplicate skipped: {msg_id}")
                         continue
 
                     phone = msg["from"]
                     name = contacts.get(phone, "")
                     _handle_message(msg, socketio, name=name)
-                    print(f"[Webhook] Finished handling {msg_id}")
+                    log.info(f"Finished handling {msg_id}")
 
     except Exception as e:
-        print(f"[Webhook] ERROR while processing: {e}")
+        log.error(f"ERROR while processing: {e}")
         import traceback
         traceback.print_exc()
 
@@ -654,7 +714,7 @@ def _handle_message(msg, socketio, name=""):
         if mode == 0:
             _executor.submit(_process_ai_reply, phone, text, socketio)
         else:
-            print(f"Human mode active for {phone} — AI skipped")
+            log.info(f"Human mode active for {phone} — AI skipped")
 
     elif msg_type == "interactive":
         interactive = msg.get("interactive", {})
@@ -746,17 +806,37 @@ def _handle_message(msg, socketio, name=""):
         # Previously these were silently dropped — not even saved — so
         # staff had no idea the customer sent anything at all. At minimum
         # always record that something arrived.
-        print(f"[Webhook] Unhandled message type '{msg_type}' from {phone} — saving a placeholder")
+        log.warning(f"Unhandled message type '{msg_type}' from {phone} — saving a placeholder")
         save_message(phone, f"[Unsupported message type: {msg_type}]", "user", socketio,
                      status="delivered", whatsapp_message_id=msg_id,
                      message_type=msg_type)
 
 
 def _handle_contact_collection(phone, text, socketio):
-    """Walks a user through Name -> Mobile -> Best Time to Call, then
-    emits a consultation_booked event so the dashboard can surface it."""
+    """Walks a user through an optional callback-choice step (for the
+    more ambiguous 'Talk to Expert' paths), then Name -> Mobile -> Best
+    Time to Call, then emits a consultation_booked event so the
+    dashboard can surface it."""
     state = _contact_collection.get(phone, {})
     step = state.get("step")
+
+    if step == "awaiting_callback_choice":
+        choice = _interpret_yes_no(text)
+        if choice == "yes":
+            _contact_collection[phone]["step"] = "awaiting_name"
+            _executor.submit(_send_text_reply, phone,
+                             "Great! Let's get you booked in. Please share your *Name*:", socketio)
+        elif choice == "no":
+            del _contact_collection[phone]
+            _executor.submit(_send_text_reply, phone,
+                             f"No problem! Feel free to reach us anytime at 📞 {CONTACT}.", socketio)
+        else:
+            # Didn't understand the reply — re-ask rather than silently
+            # dropping into the collection flow (or out of it) on a guess.
+            _executor.submit(_send_text_reply, phone,
+                             "Sorry, I didn't quite catch that 🙏 Please reply *1* for a callback, or *2* if you'll reach out yourself.",
+                             socketio)
+        return
 
     if step == "awaiting_name":
         _contact_collection[phone]["name"] = text
@@ -790,7 +870,7 @@ def _handle_contact_collection(phone, text, socketio):
             "best_time": best_time,
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         })
-        print(f"[Consultation booked] {name} ({mobile}) — best time: {best_time}")
+        log.info(f"Consultation booked: {name} ({mobile}) — best time: {best_time}")
 
 
 def _send_welcome_menu(phone, socketio):
@@ -811,7 +891,7 @@ def _send_welcome_menu(phone, socketio):
                          status="sent" if success2 else "failed",
                          whatsapp_message_id=wa_id2, source="ai")
     except Exception as e:
-        print(f"Welcome menu error for {phone}: {e}")
+        log.error(f"Welcome menu error for {phone}: {e}")
 
 
 def _send_service_menu_safe(phone, service_id, socketio):
@@ -825,7 +905,7 @@ def _send_service_menu_safe(phone, service_id, socketio):
             if sub_menu:
                 _send_text_reply(phone, sub_menu, socketio)
     except Exception as e:
-        print(f"Service menu error for {phone}: {e}")
+        log.error(f"Service menu error for {phone}: {e}")
 
 
 def _send_text_reply(phone, text, socketio):
@@ -834,12 +914,21 @@ def _send_text_reply(phone, text, socketio):
         save_message(phone, text, "bot", socketio,
                      status="sent" if success else "failed",
                      whatsapp_message_id=wa_id, source="ai")
-        # If this message was one of our "please share your contact info"
-        # prompts, start the Name -> Mobile -> Best Time collection flow.
-        if success and text in CONSULT_TRIGGER_TEXTS:
+        if not success:
+            return
+        # "Book Consultation" paths — explicit booking intent, go
+        # straight into the Name -> Mobile -> Best Time collection flow.
+        if text in CONSULT_TRIGGER_TEXTS:
             _contact_collection[phone] = {"step": "awaiting_name"}
+        # "Talk to Expert" / "Talk to Lawyer" paths — more ambiguous
+        # intent, so ask first whether they even want a callback before
+        # collecting any contact info. Matched by marker phrase rather
+        # than exact text, so it doesn't silently break if the wording
+        # of any individual prompt changes later.
+        elif _is_consult_choice_prompt(text):
+            _contact_collection[phone] = {"step": "awaiting_callback_choice"}
     except Exception as e:
-        print(f"Text reply error for {phone}: {e}")
+        log.error(f"Text reply error for {phone}: {e}")
 
 
 def _process_ai_reply(phone, text, socketio):
@@ -850,4 +939,4 @@ def _process_ai_reply(phone, text, socketio):
         save_message(phone, reply, "bot", socketio,
                      status=status, whatsapp_message_id=wa_msg_id, source="ai")
     except Exception as e:
-        print(f"AI reply error for {phone}: {e}")
+        log.error(f"AI reply error for {phone}: {e}")
