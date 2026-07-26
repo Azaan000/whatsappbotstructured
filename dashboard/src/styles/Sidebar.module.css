@@ -1,17 +1,56 @@
 .sidebar {
   width: 300px;
   background: #fff;
-  border-right: 1px solid #e0e0e0;
+  border-right: 1px solid var(--color-border-tertiary, #e0e0e0);
   display: flex;
   flex-direction: column;
   height: 100%;
   flex-shrink: 0;
 }
 
+/* ── Brand header — both logos, premium navy/gold treatment ── */
+.brandHeader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 20px 16px 17px;
+  background: linear-gradient(135deg, var(--color-navy, #03244f) 0%, var(--color-navy-dark, #021a38) 100%);
+  position: relative;
+  flex-shrink: 0;
+}
+.brandHeader::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--color-gold, #ea963e), var(--color-red, #ca000e));
+}
+.brandLogo {
+  height: 42px;
+  width: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.4));
+  animation: brandLogoGlow 3.5s ease-in-out infinite;
+}
+@keyframes brandLogoGlow {
+  0%, 100% { filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.4)); }
+  50%      { filter: drop-shadow(0 2px 14px rgba(234, 150, 62, 0.6)); }
+}
+.brandLogoSecond {
+  animation-delay: 1.75s;
+}
+.brandDivider {
+  width: 1px;
+  height: 34px;
+  background: rgba(255, 255, 255, 0.22);
+  flex-shrink: 0;
+}
+
 /* ── Header ── */
 .header {
   padding: 14px 16px 10px;
-  border-bottom: 1px solid #e0e0e0;
+  border-bottom: 1px solid var(--color-border-tertiary, #e0e0e0);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -26,7 +65,7 @@
 .title {
   font-size: 17px;
   font-weight: 700;
-  color: #111;
+  color: var(--color-text-primary, #111);
 }
 
 /* Live connection dot */
@@ -40,16 +79,16 @@
 
 .markAllBtn {
   font-size: 11px;
-  background: #e3f2fd;
-  color: #0b5cff;
+  background: var(--color-gold-soft, #fff3e6);
+  color: var(--color-navy, #03244f);
   border: none;
   border-radius: 12px;
   padding: 3px 10px;
   cursor: pointer;
-  font-weight: 500;
+  font-weight: 600;
   white-space: nowrap;
 }
-.markAllBtn:hover { background: #bbdefb; }
+.markAllBtn:hover { background: var(--color-gold-light, #f4b56a); color: #fff; }
 
 /* ── Search ── */
 .searchWrap {
@@ -76,7 +115,7 @@
   transition: border-color 0.15s, background 0.15s;
 }
 .searchInput:focus {
-  border-color: #0b5cff;
+  border-color: var(--color-navy, #03244f);
   background: #fff;
 }
 .searchClear {
@@ -93,7 +132,7 @@
 
 .exportBtn {
   padding: 6px 12px;
-  background: #4caf50;
+  background: var(--color-navy, #03244f);
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -103,7 +142,7 @@
   align-self: flex-start;
   transition: background 0.15s;
 }
-.exportBtn:hover { background: #43a047; }
+.exportBtn:hover { background: var(--color-gold, #ea963e); }
 
 /* ── List ── */
 .list {
@@ -136,8 +175,8 @@
 .user:hover .deleteBtn { opacity: 1; }
 
 .active {
-  background: #e3f2fd !important;
-  border-left-color: #0b5cff !important;
+  background: var(--color-gold-soft, #fff3e6) !important;
+  border-left-color: var(--color-gold, #ea963e) !important;
 }
 .unread {
   background: #fff8f0;
@@ -300,11 +339,11 @@
 .tag {
   display: inline-block;
   margin-top: 2px;
-  background: #e3f2fd;
+  background: var(--color-gold-soft, #fff3e6);
   padding: 1px 8px;
   border-radius: 10px;
   font-size: 10px;
-  color: #0b5cff;
-  font-weight: 500;
+  color: var(--color-navy, #03244f);
+  font-weight: 600;
   align-self: flex-start;
 }

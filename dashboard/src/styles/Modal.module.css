@@ -1,7 +1,7 @@
 /* Modal.module.css */
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
 
-.modal { background: #fff; border-radius: 16px; width: 500px; max-width: 92vw; max-height: 80vh; overflow: auto; box-shadow: 0 10px 40px rgba(0,0,0,0.2); display: flex; flex-direction: column; }
+.modal { background: #fff; border-radius: 16px; width: 500px; max-width: 92vw; max-height: 80vh; overflow: auto; box-shadow: var(--shadow-premium-lg, 0 10px 40px rgba(0,0,0,0.2)); display: flex; flex-direction: column; }
 .wide { width: 800px; }
 .scrollable { overflow-y: auto; max-height: calc(80vh - 120px); }
 
@@ -23,9 +23,10 @@
 
 .progressWrap { margin-top: 14px; }
 .progressBar { height: 8px; background: #f0f0f0; border-radius: 4px; overflow: hidden; }
-.progressFill { height: 100%; background: #0b5cff; transition: width 0.3s; }
+.progressFill { height: 100%; background: var(--color-gold, #ea963e); transition: width 0.3s; }
 .progressText { text-align: center; margin-top: 6px; font-size: 12px; color: #666; }
 
 .cancelBtn  { padding: 8px 16px; background: #f5f5f5; color: #333; border: 1px solid #ddd; border-radius: 8px; cursor: pointer; font-size: 14px; }
-.primaryBtn { padding: 8px 20px; background: #0b5cff; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; }
+.primaryBtn { padding: 8px 20px; background: linear-gradient(135deg, var(--color-navy, #03244f), var(--color-navy-dark, #021a38)); color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; transition: background 0.15s; }
+.primaryBtn:hover { background: linear-gradient(135deg, var(--color-gold, #ea963e), var(--color-gold-light, #f4b56a)); }
 .primaryBtn:disabled { opacity: 0.5; cursor: not-allowed; }

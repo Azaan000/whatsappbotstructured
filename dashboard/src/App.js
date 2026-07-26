@@ -469,28 +469,28 @@ export default function App() {
 
       {/* Top bar */}
       <div style={barStyle}>
-        <span style={{ fontSize: 16, fontWeight: 700, color: "#fff", letterSpacing: 0.3 }}>
+        <span className="brandTitleShimmer" style={{ fontSize: 16, fontWeight: 700, letterSpacing: 0.3 }}>
           BizAdvise & LawAdvise
         </span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <button style={btnStyle("#fff", "#667eea")} onClick={async () => { await refreshAnalytics(); setShowAnalytics(true); }}>
+          <button style={btnStyle("#fff", "var(--color-navy)")} onClick={async () => { await refreshAnalytics(); setShowAnalytics(true); }}>
             📊 Analytics
           </button>
           <button
-            style={{ ...btnStyle("#e53935", "#fff"), display: "flex", alignItems: "center", gap: 6 }}
+            style={{ ...btnStyle("var(--color-red)", "#fff"), display: "flex", alignItems: "center", gap: 6 }}
             onClick={() => setShowConsultations(true)}
           >
             📋 Consultations
             {consultationCount > 0 && (
-              <span style={{ background: "#fff", color: "#e53935", borderRadius: "50%", width: 18, height: 18, fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <span style={{ background: "#fff", color: "var(--color-red)", borderRadius: "50%", width: 18, height: 18, fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {consultationCount}
               </span>
             )}
           </button>
-          <button style={btnStyle("#ff9800", "#fff")} onClick={() => setShowBroadcast(true)}>
+          <button style={btnStyle("var(--color-gold)", "#fff")} onClick={() => setShowBroadcast(true)}>
             📢 Broadcast
           </button>
-          <button style={btnStyle("#4caf50", "#fff")} onClick={() => api.reloadKnowledge()}>
+          <button style={btnStyle("var(--color-navy-light)", "#fff")} onClick={() => api.reloadKnowledge()}>
             🔄 Reload KB
           </button>
         </div>
@@ -576,8 +576,9 @@ export default function App() {
 
 const barStyle = {
   display: "flex", alignItems: "center", padding: "10px 20px",
-  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-  flexShrink: 0, boxShadow: "0 2px 8px rgba(0,0,0,0.15)", gap: 12,
+  background: "linear-gradient(135deg, var(--color-navy) 0%, var(--color-navy-dark) 100%)",
+  borderBottom: "3px solid var(--color-gold)",
+  flexShrink: 0, boxShadow: "0 2px 8px rgba(3,36,79,0.25)", gap: 12,
 };
 const btnStyle = (bg, color) => ({
   padding: "6px 14px", background: bg, color,

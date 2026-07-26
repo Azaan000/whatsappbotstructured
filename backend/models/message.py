@@ -69,15 +69,39 @@ def save_message(
         conn.close()
 
 
+# WhatsApp's status webhooks (sent -> delivered -> read) are NOT
+# guaranteed to arrive in order over the network — a delayed "delivered"
+# callback can land after the "read" one already did. Without a rank
+# check, that later "delivered" blindly overwrites "read" and the
+# checkmarks visibly regress in the dashboard even though the customer
+# genuinely did read it. This enforces the update only ever moves the
+# status forward (except "failed", which can happen at any point and
+# should always win since it's the one status staff need to notice).
+_STATUS_RANK = {"sending": 0, "sent": 1, "delivered": 2, "read": 3, "failed": 4}
+
+
 def update_message_status(whatsapp_message_id, status, socketio):
     conn = get_db()
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "SELECT phone FROM messages WHERE whatsapp_message_id=?",
+            "SELECT phone, status FROM messages WHERE whatsapp_message_id=?",
             (whatsapp_message_id,),
         )
         row = cursor.fetchone()
+        if not row:
+            return
+
+        current_status = row["status"] or "sent"
+        current_rank = _STATUS_RANK.get(current_status, 0)
+        new_rank = _STATUS_RANK.get(status, 0)
+
+        if new_rank < current_rank and status != "failed":
+            print(
+                f"[Status] Ignoring out-of-order '{status}' "
+                f"(already '{current_status}') for {whatsapp_message_id}"
+            )
+            return
 
         cursor.execute(
             "UPDATE messages SET status=? WHERE whatsapp_message_id=?",
@@ -85,12 +109,11 @@ def update_message_status(whatsapp_message_id, status, socketio):
         )
         conn.commit()
 
-        if row:
-            socketio.emit("status_update", {
-                "whatsapp_message_id": whatsapp_message_id,
-                "status": status,
-                "phone": row["phone"],
-            })
+        socketio.emit("status_update", {
+            "whatsapp_message_id": whatsapp_message_id,
+            "status": status,
+            "phone": row["phone"],
+        })
     except Exception as e:
         print(f"update_message_status error: {e}")
     finally:
