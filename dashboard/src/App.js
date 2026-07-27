@@ -11,13 +11,7 @@ import BroadcastModal from "./components/BroadcastModal";
 import AnalyticsModal from "./components/AnalyticsModal";
 import EditUserModal from "./components/EditUserModal";
 import ConsultationsModal from "./components/ConsultationsModal";
-
-// Set to true (or window.DEBUG_CONSULT = true in the browser console) to
-// see the consultation-booked trace logs. Off by default in production.
-const DEBUG_CONSULT = false;
-const trace = (...args) => {
-  if (DEBUG_CONSULT || window.DEBUG_CONSULT) console.log(...args);
-};
+import { playNotificationSound, unlockAudioOnFirstGesture, requestNotificationPermission, trace } from "./utils/notificationSound";
 
 const CONSULT_KEYWORDS = [
   "consult", "book", "appointment", "talk to", "speak to",
@@ -42,82 +36,6 @@ function markConsultSeen(phone) {
   const seen = getSeenConsults();
   seen.add(phone);
   saveSeenConsults(seen);
-}
-
-// ── Shared AudioContext ──────────────────────────────────────────────────
-// Browsers (Chrome/Safari) start every AudioContext in a "suspended" state
-// until the page has received a real user gesture (click/keydown/tap).
-// Creating a brand-new context on every notification — with no gesture
-// behind it — means the tones schedule but never actually play, and it
-// also leaks contexts (browsers cap you at ~4-6 concurrent ones).
-// Fix: create ONE context up front, and unlock/resume it on the user's
-// first interaction with the page.
-let _audioCtx = null;
-function getAudioContext() {
-  if (!_audioCtx) {
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return null;
-    _audioCtx = new AC();
-  }
-  return _audioCtx;
-}
-
-function unlockAudioOnFirstGesture() {
-  const unlock = () => {
-    const ctx = getAudioContext();
-    if (ctx && ctx.state === "suspended") ctx.resume().catch(() => {});
-    window.removeEventListener("click", unlock);
-    window.removeEventListener("keydown", unlock);
-  };
-  window.addEventListener("click", unlock);
-  window.addEventListener("keydown", unlock);
-}
-
-// Play a notification sound using Web Audio API — no file needed
-function playNotificationSound() {
-  try {
-    const ctx = getAudioContext();
-    trace("[TRACE 4] AudioContext state:", ctx?.state);
-    if (!ctx) { trace("[TRACE 4] No AudioContext available (unsupported browser)"); return; }
-
-    const schedule = () => {
-      const playTone = (freq, start, duration, gain = 0.3) => {
-        const osc = ctx.createOscillator();
-        const gainNode = ctx.createGain();
-        osc.connect(gainNode);
-        gainNode.connect(ctx.destination);
-        osc.frequency.value = freq;
-        osc.type = "sine";
-        gainNode.gain.setValueAtTime(0, ctx.currentTime + start);
-        gainNode.gain.linearRampToValueAtTime(gain, ctx.currentTime + start + 0.02);
-        gainNode.gain.linearRampToValueAtTime(0, ctx.currentTime + start + duration);
-        osc.start(ctx.currentTime + start);
-        osc.stop(ctx.currentTime + start + duration + 0.05);
-      };
-      // Three ascending tones — pleasant alert
-      playTone(523, 0,    0.15);  // C5
-      playTone(659, 0.18, 0.15);  // E5
-      playTone(784, 0.36, 0.25);  // G5
-    };
-
-    if (ctx.state === "suspended") {
-      // Still locked (no gesture yet this session) — try to resume and
-      // play once it succeeds; if the browser refuses, fail silently
-      // instead of throwing, so the browser notification/toast still fire.
-      ctx.resume().then(schedule).catch(() => {});
-    } else {
-      schedule();
-    }
-  } catch (e) {
-    console.log("Audio not available:", e);
-  }
-}
-
-// Request browser notification permission once
-function requestNotificationPermission() {
-  if ("Notification" in window && Notification.permission === "default") {
-    Notification.requestPermission();
-  }
 }
 
 function showBrowserNotification(title, body) {
@@ -163,6 +81,7 @@ export default function App() {
   const [showBroadcast, setShowBroadcast] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showConsultations, setShowConsultations] = useState(false);
+  const [latestBooking, setLatestBooking] = useState(null);
   const [editingUser, setEditingUser] = useState(null);
 
   const {
@@ -332,6 +251,12 @@ export default function App() {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setConsultToast({ phone, name, mobile, best_time });
     toastTimerRef.current = setTimeout(() => setConsultToast(null), 8000);
+
+    // 6. Let the Consultations modal know, in case it's already open —
+    // without this it only ever fetched once on mount, so a booking that
+    // arrived while staff had the tab open wouldn't show up (or make a
+    // sound there) until they closed and reopened it.
+    setLatestBooking({ phone, name, mobile, best_time, at: Date.now() });
   }, [selectedPhoneRef]);
 
   const { connected } = useSocket({
@@ -568,7 +493,7 @@ export default function App() {
 
       {showBroadcast && <BroadcastModal users={users} onClose={() => setShowBroadcast(false)} />}
       {showAnalytics && <AnalyticsModal stats={stats} onClose={() => setShowAnalytics(false)} />}
-      {showConsultations && <ConsultationsModal users={users} onClose={() => setShowConsultations(false)} onSelectUser={selectUser} onUserDeleted={handleUserDeleted} />}
+      {showConsultations && <ConsultationsModal users={users} onClose={() => setShowConsultations(false)} onSelectUser={selectUser} onUserDeleted={handleUserDeleted} latestBooking={latestBooking} />}
       {editingUser && <EditUserModal user={editingUser} onClose={() => setEditingUser(null)} onSaved={handleUserSaved} />}
     </div>
   );

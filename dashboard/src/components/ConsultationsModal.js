@@ -2,20 +2,45 @@ import React, { useEffect, useState, useRef } from "react";
 import { api } from "../api/client";
 import s from "../styles/Modal.module.css";
 import c from "../styles/Consultations.module.css";
+import { playNotificationSound } from "../utils/notificationSound";
 
-export default function ConsultationsModal({ onClose, onSelectUser, users, onUserDeleted }) {
+export default function ConsultationsModal({ onClose, onSelectUser, users, onUserDeleted, latestBooking }) {
   const [consultations, setConsultations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [confirmPhone, setConfirmPhone] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [justBookedPhone, setJustBookedPhone] = useState(null);
   const modalRef = useRef(null);
+  const mountedAtRef = useRef(Date.now());
 
-  useEffect(() => {
+  const refresh = () => {
     api.getConsultations()
       .then(setConsultations)
       .catch(console.error)
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    refresh();
   }, []);
+
+  // Previously this modal only ever fetched once, on mount — a booking
+  // that came in while staff already had it open wouldn't appear (or
+  // make a sound) until they closed and reopened it. Now it reacts live.
+  useEffect(() => {
+    if (!latestBooking) return;
+    // Ignore whatever the parent's initial/leftover state was BEFORE
+    // this modal was even opened — only react to bookings that happen
+    // while it's actually mounted.
+    if (latestBooking.at <= mountedAtRef.current) return;
+
+    playNotificationSound();
+    setJustBookedPhone(latestBooking.phone);
+    refresh();
+
+    const t = setTimeout(() => setJustBookedPhone(null), 4000);
+    return () => clearTimeout(t);
+  }, [latestBooking]);
 
   const handleOverlay = (e) => {
     if (!modalRef.current?.contains(e.target)) onClose();
@@ -64,7 +89,7 @@ export default function ConsultationsModal({ onClose, onSelectUser, users, onUse
               </div>
               <div className={c.list}>
                 {consultations.map((item) => (
-                  <div key={item.phone} className={c.card}>
+                  <div key={item.phone} className={`${c.card} ${item.phone === justBookedPhone ? c.justBooked : ""}`}>
                     <div className={c.cardLeft}>
                       <div className={c.avatar}>
                         {(item.name || item.phone).charAt(0).toUpperCase()}
