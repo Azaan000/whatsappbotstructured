@@ -14,6 +14,7 @@ from models.database import init_db, DB_PATH
 from routes.webhook import webhook_bp
 from routes.analytics import analytics_bp
 from routes.chat import chat_bp
+from routes.auth import auth_bp
 from utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -44,6 +45,7 @@ set_socketio(socketio)
 app.register_blueprint(webhook_bp)
 app.register_blueprint(analytics_bp)
 app.register_blueprint(chat_bp)
+app.register_blueprint(auth_bp)
 
 
 @app.route("/")

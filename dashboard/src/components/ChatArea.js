@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from "react";
 import s from "../styles/ChatArea.module.css";
+import { BASE, getToken } from "../api/client";
 
 function statusIcon(status) {
   return { sent: "✓", delivered: "✓✓", read: "✓✓✓", sending: "⋯", failed: "⚠" }[status] || "";
@@ -25,9 +26,6 @@ function isSameDay(ts1, ts2) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-const BASE = process.env.REACT_APP_API_URL || "http://localhost:5000";
-const SECRET = process.env.REACT_APP_DASHBOARD_SECRET || "";
-
 function isImageType(type) {
   return ["image"].includes(type);
 }
@@ -41,7 +39,7 @@ function isDocType(type) {
 function MediaBubble({ msg }) {
   const [lightbox, setLightbox] = useState(false);
   const mediaUrl = msg.media_path
-    ? `${BASE}/media/${encodeURIComponent(msg.media_path)}?token=${SECRET}`
+    ? `${BASE}/media/${encodeURIComponent(msg.media_path)}?token=${getToken()}`
     : null;
 
   if (isImageType(msg.message_type) && mediaUrl) {

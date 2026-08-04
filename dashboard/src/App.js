@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import "./styles/global.css";
 
-import { api } from "./api/client";
+import { api, getToken, setUnauthorizedHandler, clearSession } from "./api/client";
 import { useSocket } from "./hooks/useSocket";
 import { useMessages } from "./hooks/useMessages";
 
@@ -11,6 +11,8 @@ import BroadcastModal from "./components/BroadcastModal";
 import AnalyticsModal from "./components/AnalyticsModal";
 import EditUserModal from "./components/EditUserModal";
 import ConsultationsModal from "./components/ConsultationsModal";
+import Login from "./components/Login";
+import AccountModal from "./components/AccountModal";
 import { playNotificationSound, unlockAudioOnFirstGesture, requestNotificationPermission, trace } from "./utils/notificationSound";
 
 const CONSULT_KEYWORDS = [
@@ -50,7 +52,7 @@ function showBrowserNotification(title, body) {
   }
 }
 
-export default function App() {
+function Dashboard({ authUser, onLogout }) {
   const [users, setUsers] = useState([]);
   const [selectedPhone, setSelectedPhone] = useState(null);
   const [selectedUser, setSelectedUser] = useState(null);
@@ -81,6 +83,7 @@ export default function App() {
   const [showBroadcast, setShowBroadcast] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showConsultations, setShowConsultations] = useState(false);
+  const [showAccount, setShowAccount] = useState(false);
   const [latestBooking, setLatestBooking] = useState(null);
   const [editingUser, setEditingUser] = useState(null);
 
@@ -418,6 +421,12 @@ export default function App() {
           <button style={btnStyle("var(--color-navy-light)", "#fff")} onClick={() => api.reloadKnowledge()}>
             🔄 Reload KB
           </button>
+          <button style={btnStyle("#fff", "var(--color-navy)")} onClick={() => setShowAccount(true)}>
+            👤 {authUser?.display_name || authUser?.username}
+          </button>
+          <button style={btnStyle("#f5f5f5", "#333")} onClick={onLogout}>
+            Log out
+          </button>
         </div>
       </div>
 
@@ -495,6 +504,13 @@ export default function App() {
       {showAnalytics && <AnalyticsModal stats={stats} onClose={() => setShowAnalytics(false)} />}
       {showConsultations && <ConsultationsModal users={users} onClose={() => setShowConsultations(false)} onSelectUser={selectUser} onUserDeleted={handleUserDeleted} latestBooking={latestBooking} />}
       {editingUser && <EditUserModal user={editingUser} onClose={() => setEditingUser(null)} onSaved={handleUserSaved} />}
+      {showAccount && (
+        <AccountModal
+          user={authUser}
+          onClose={() => setShowAccount(false)}
+          onLoggedOut={onLogout}
+        />
+      )}
     </div>
   );
 }
@@ -510,3 +526,47 @@ const btnStyle = (bg, color) => ({
   border: "none", borderRadius: 20, cursor: "pointer",
   fontWeight: 600, fontSize: 12, whiteSpace: "nowrap",
 });
+
+// ── Top-level App: handles auth, then hands off to the Dashboard ──────────
+
+export default function App() {
+  const [authUser, setAuthUser] = useState(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  const logout = useCallback(() => {
+    clearSession();
+    setAuthUser(null);
+  }, []);
+
+  // Any 401 from the API anywhere in the dashboard drops back to login.
+  useEffect(() => {
+    setUnauthorizedHandler(() => setAuthUser(null));
+    return () => setUnauthorizedHandler(null);
+  }, []);
+
+  // On first load, if a token was saved from a previous session, verify
+  // it's still valid (and get the current user info) before showing the
+  // dashboard — this is what lets a refresh keep you logged in.
+  useEffect(() => {
+    const token = getToken();
+    if (!token) { setCheckingSession(false); return; }
+    api.me()
+      .then((data) => setAuthUser(data.user))
+      .catch(() => clearSession())
+      .finally(() => setCheckingSession(false));
+  }, []);
+
+  if (checkingSession) {
+    return (
+      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#888", fontSize: 14 }}>
+        Loading…
+      </div>
+    );
+  }
+
+  if (!authUser) {
+    return <Login onAuthenticated={setAuthUser} />;
+  }
+
+  return <Dashboard authUser={authUser} onLogout={logout} />;
+}

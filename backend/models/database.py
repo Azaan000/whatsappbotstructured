@@ -31,6 +31,25 @@ def init_db():
         )
     """)
 
+    # Created before the migrations/backfills below, since some of them
+    # (e.g. the last_message backfill) query this table — on a genuinely
+    # fresh install, `messages` wouldn't exist yet otherwise and those
+    # queries would fail.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS messages (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            phone                TEXT,
+            message              TEXT,
+            direction            TEXT,
+            status               TEXT DEFAULT 'sent',
+            timestamp            TEXT,
+            message_type         TEXT DEFAULT 'text',
+            media_path           TEXT,
+            file_name            TEXT,
+            whatsapp_message_id  TEXT
+        )
+    """)
+
     try:
         cursor.execute("ALTER TABLE users ADD COLUMN name TEXT DEFAULT ''")
     except sqlite3.OperationalError as e:
@@ -87,17 +106,14 @@ def init_db():
         """)
 
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS messages (
-            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-            phone                TEXT,
-            message              TEXT,
-            direction            TEXT,
-            status               TEXT DEFAULT 'sent',
-            timestamp            TEXT,
-            message_type         TEXT DEFAULT 'text',
-            media_path           TEXT,
-            file_name            TEXT,
-            whatsapp_message_id  TEXT
+        CREATE TABLE IF NOT EXISTS dashboard_users (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            username      TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            display_name  TEXT DEFAULT '',
+            is_admin      INTEGER DEFAULT 0,
+            created_at    TEXT,
+            last_login    TEXT
         )
     """)
 
@@ -118,9 +134,11 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_users_last_seen
         ON users (last_seen DESC)
     """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_dashboard_users_username
+        ON dashboard_users (username)
+    """)
 
     conn.commit()
     conn.close()
     print("Database ready")
-
-
