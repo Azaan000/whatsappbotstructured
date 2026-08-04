@@ -45,6 +45,12 @@ app.register_blueprint(webhook_bp)
 app.register_blueprint(analytics_bp)
 app.register_blueprint(chat_bp)
 
+
+@app.route("/")
+def home():
+    return "APP VERSION 1"
+
+
 init_db()
 
 
@@ -123,4 +129,5 @@ if __name__ == "__main__":
     log.info("Dashboard: http://localhost:3000")
     log.info("Health   : http://localhost:5000/health")
     log.info("=" * 50)
-    socketio.run(app, host="0.0.0.0", port=5000, debug=debug, allow_unsafe_werkzeug=debug)
+    port = int(os.getenv("PORT", "5000"))
+    socketio.run(app, host="0.0.0.0", port=port, debug=debug, allow_unsafe_werkzeug=debug)

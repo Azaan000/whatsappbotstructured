@@ -1,7 +1,8 @@
+import os
 import sqlite3
 from datetime import datetime
 
-DB_PATH = "database.db"
+DB_PATH = os.getenv("DB_PATH", "database.db")
 
 
 def get_db():
@@ -25,7 +26,8 @@ def init_db():
             tags           TEXT DEFAULT '',
             notes          TEXT DEFAULT '',
             total_messages INTEGER DEFAULT 0,
-            last_message   TEXT DEFAULT ''
+            last_message   TEXT DEFAULT '',
+            last_read_message_id INTEGER DEFAULT 0
         )
     """)
 
@@ -45,6 +47,20 @@ def init_db():
         if "duplicate column name" not in str(e).lower():
             print(f"init_db migration warning: {e}")
 
+    # Track whether this column is being added for the very first time —
+    # the one-time backfill below must only run in that case. If it ran
+    # on every startup instead (matching on last_read_message_id == 0),
+    # it would keep resetting genuinely-unread conversations to "read"
+    # every time the server restarts, which is the exact bug this
+    # migration exists to fix, just from the other direction.
+    just_added_last_read_column = False
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN last_read_message_id INTEGER DEFAULT 0")
+        just_added_last_read_column = True
+    except sqlite3.OperationalError as e:
+        if "duplicate column name" not in str(e).lower():
+            print(f"init_db migration warning: {e}")
+
     # Backfill last_message for any existing rows created before this
     # column existed (a fresh install has no users yet, so this is a
     # no-op; on an upgrade it runs once and self-heals the data).
@@ -58,6 +74,17 @@ def init_db():
         WHERE (last_message IS NULL OR last_message = '')
           AND EXISTS (SELECT 1 FROM messages m WHERE m.phone = users.phone)
     """)
+
+    # Backfill last_read_message_id (one-time only, see comment above) —
+    # marks everything as "read up to now" so existing conversations
+    # don't all show as unread the moment this feature ships.
+    if just_added_last_read_column:
+        cursor.execute("""
+            UPDATE users
+            SET last_read_message_id = COALESCE(
+                (SELECT MAX(m.id) FROM messages m WHERE m.phone = users.phone), 0
+            )
+        """)
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS messages (
@@ -97,5 +124,3 @@ def init_db():
     print("Database ready")
 
 
-# Run on import — ensures tables exist before any route touches the DB
-init_db()

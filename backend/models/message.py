@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from models.database import get_db
 from utils.logger import get_logger
 
@@ -20,7 +20,8 @@ def save_message(
     conn = get_db()
     cursor = conn.cursor()
     try:
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # Explicit UTC with a 'Z' suffix — see models/user.py for why.
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         cursor.execute(
             """INSERT INTO messages
                (phone, message, direction, status, timestamp,
