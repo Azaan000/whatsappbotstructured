@@ -88,7 +88,7 @@ function Dashboard({ authUser, onLogout }) {
 
   const {
     messages, setMessages, loading, unreadCounts, highlightedUsers,
-    loadMessages, markAsRead, incrementUnread, appendMessage,
+    loadMessages, markAsRead, seedUnreadCounts, incrementUnread, appendMessage,
     updateMessageStatus, updateTempStatus, removeMessage, selectedPhoneRef,
   } = useMessages(selectedPhone);
 
@@ -107,7 +107,12 @@ function Dashboard({ authUser, onLogout }) {
     setUsers((prev) => prev.map((u) => u.phone === data.phone ? { ...u, ...data } : u));
     if (selectedPhoneRef.current === data.phone)
       setSelectedUser((prev) => ({ ...prev, ...data }));
-  }, [selectedPhoneRef]);
+    // mark_read() on the backend broadcasts { phone, unread_count: 0 }
+    // whenever ANY dashboard tab/instance reads this chat — apply that
+    // here so every other open tab clears the badge too, instead of
+    // only the tab that actually opened the chat.
+    if (data.unread_count === 0) markAsRead(data.phone);
+  }, [selectedPhoneRef, markAsRead]);
 
   const handleNewMessage = useCallback((data) => {
     setUsers((prev) => prev.map((u) =>
@@ -256,6 +261,7 @@ function Dashboard({ authUser, onLogout }) {
           api.getUsers(), api.getAnalytics(), api.getConsultations(),
         ]);
         setUsers(usersData);
+        seedUnreadCounts(usersData);
         setStats(statsData);
         const seen = getSeenConsults();
         setUnseenConsultPhones(new Set(consults.map((c) => c.phone).filter((p) => !seen.has(p))));
@@ -277,6 +283,9 @@ function Dashboard({ authUser, onLogout }) {
     setSelectedUser(user);
     loadMessages(user.phone);
     markAsRead(user.phone);
+    // Persist the read state server-side so it survives logging out/back
+    // in and stays correct if the dashboard is open elsewhere too.
+    api.markRead(user.phone).catch((e) => console.error("markRead:", e));
     setTyping(false);
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     markConsultSeen(user.phone);
@@ -335,7 +344,10 @@ function Dashboard({ authUser, onLogout }) {
   }, [selectedPhone]);
 
   const handleMarkAllRead = useCallback(() => {
-    users.forEach((u) => markAsRead(u.phone));
+    users.forEach((u) => {
+      markAsRead(u.phone);
+      api.markRead(u.phone).catch((e) => console.error("markRead:", e));
+    });
   }, [users, markAsRead]);
 
   // ── Render ────────────────────────────────────────────────────────────

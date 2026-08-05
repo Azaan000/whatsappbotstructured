@@ -105,6 +105,12 @@ export const api = {
   deleteDashboardUser: (id) =>
     request(`/dashboard-users/${id}`, { method: "DELETE" }),
 
+  setDashboardUserAdmin: (id, isAdmin) =>
+    request(`/dashboard-users/${id}/admin`, {
+      method: "PUT",
+      body: JSON.stringify({ is_admin: isAdmin }),
+    }),
+
   // ── Dashboard endpoints ───────────────────────────────────────────
   getUsers: () => request("/users"),
 
@@ -139,6 +145,12 @@ export const api = {
 
   toggleMode: (phone) =>
     request(`/toggle/${phone}`, { method: "POST" }),
+
+  // Persists "read up to here" server-side (see /mark-read/<phone> in
+  // backend/routes/chat.py) so the unread badge survives a re-login and
+  // stays in sync if the dashboard is open in more than one tab/device.
+  markRead: (phone) =>
+    request(`/mark-read/${phone}`, { method: "POST" }),
 
   updateUser: (phone, tags, notes) =>
     request("/update-user", {

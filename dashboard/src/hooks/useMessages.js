@@ -23,6 +23,25 @@ export function useMessages(selectedPhone) {
     }
   }, []);
 
+  // Seeds unread state from the server's persisted unread_count (see
+  // get_all_users in backend/models/user.py). Call this right after the
+  // initial /users load so messages that arrived while nobody was logged
+  // in — or that were read from a different tab/device — show up with
+  // the correct badge instead of starting blank every time the dashboard
+  // (re)mounts.
+  const seedUnreadCounts = useCallback((usersList) => {
+    const counts = {};
+    const highlighted = new Set();
+    (usersList || []).forEach((u) => {
+      if (u.unread_count > 0) {
+        counts[u.phone] = u.unread_count;
+        highlighted.add(u.phone);
+      }
+    });
+    setUnreadCounts(counts);
+    setHighlightedUsers(highlighted);
+  }, []);
+
   const markAsRead = useCallback((phone) => {
     setUnreadCounts((prev) => ({ ...prev, [phone]: 0 }));
     setHighlightedUsers((prev) => {
@@ -103,6 +122,7 @@ export function useMessages(selectedPhone) {
     highlightedUsers,
     loadMessages,
     markAsRead,
+    seedUnreadCounts,
     incrementUnread,
     appendMessage,
     updateMessageStatus,

@@ -8,7 +8,9 @@ export default function AccountModal({ user, currentUser, onClose, onLoggedOut }
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [togglingId, setTogglingId] = useState(null);
   const [error, setError] = useState("");
+  const [confirmUser, setConfirmUser] = useState(null);
 
   useEffect(() => {
     loadUsers();
@@ -27,25 +29,44 @@ export default function AccountModal({ user, currentUser, onClose, onLoggedOut }
     }
   };
 
-  const handleDeleteUser = async (targetUser) => {
-    if (!window.confirm(`Delete dashboard account for ${targetUser.username || targetUser.display_name}?`)) {
-      return;
-    }
+  const handleDeleteUser = (targetUser) => {
+    setConfirmUser(targetUser);
+  };
+
+  const confirmDeleteUser = async () => {
+    const targetUser = confirmUser;
+    if (!targetUser) return;
 
     setDeletingId(targetUser.id);
     try {
       await api.deleteDashboardUser(targetUser.id);
       setUsers((prev) => prev.filter((u) => u.id !== targetUser.id));
     } catch (err) {
-      alert(err.message || "Failed to delete dashboard account.");
+      setError(err.message || "Failed to delete dashboard account.");
     } finally {
       setDeletingId(null);
+      setConfirmUser(null);
+    }
+  };
+
+  const handleToggleAdmin = async (targetUser) => {
+    setError("");
+    setTogglingId(targetUser.id);
+    try {
+      await api.setDashboardUserAdmin(targetUser.id, !targetUser.is_admin);
+      setUsers((prev) =>
+        prev.map((u) => (u.id === targetUser.id ? { ...u, is_admin: !u.is_admin } : u))
+      );
+    } catch (err) {
+      setError(err.message || "Failed to update admin status.");
+    } finally {
+      setTogglingId(null);
     }
   };
 
   return (
     <div className={modalStyles.overlay}>
-      <div className={`${modalStyles.content} ${modalStyles.wide}`}>
+      <div className={`${styles.content} ${styles.wide}`}>
         <div className={styles.modalHeader}>
           <div>
             <h2 className={styles.title}>Account & User Directory</h2>
@@ -106,19 +127,38 @@ export default function AccountModal({ user, currentUser, onClose, onLoggedOut }
                             </div>
                           </td>
                           <td>
-                            <span className={`${styles.roleBadge} ${styles.badgeAdmin}`}>
-                              {u.role || "Agent"}
+                            <span
+                              className={`${styles.roleBadge} ${
+                                u.is_admin ? styles.badgeAdmin : styles.badgeUser
+                              }`}
+                            >
+                              {u.is_admin ? "Admin" : "Agent"}
                             </span>
                           </td>
                           <td style={{ textAlign: "right" }}>
                             {!isSelf && (
-                              <button
-                                className={`${styles.actionBtn} ${styles.revokeBtn}`}
-                                onClick={() => handleDeleteUser(u)}
-                                disabled={deletingId === u.id}
-                              >
-                                {deletingId === u.id ? "Deleting..." : "Delete Account"}
-                              </button>
+                              <div style={{ display: "inline-flex", gap: 8 }}>
+                                {activeUser?.is_admin && (
+                                  <button
+                                    className={styles.cancelBtn}
+                                    onClick={() => handleToggleAdmin(u)}
+                                    disabled={togglingId === u.id}
+                                  >
+                                    {togglingId === u.id
+                                      ? "Updating..."
+                                      : u.is_admin
+                                      ? "Demote to Agent"
+                                      : "Make Admin"}
+                                  </button>
+                                )}
+                                <button
+                                  className={`${styles.actionBtn} ${styles.revokeBtn}`}
+                                  onClick={() => handleDeleteUser(u)}
+                                  disabled={deletingId === u.id}
+                                >
+                                  {deletingId === u.id ? "Deleting..." : "Delete Account"}
+                                </button>
+                              </div>
                             )}
                           </td>
                         </tr>
@@ -146,6 +186,40 @@ export default function AccountModal({ user, currentUser, onClose, onLoggedOut }
           </button>
         </div>
       </div>
+
+      {/* Confirm delete — replaces the native browser confirm() dialog */}
+      {confirmUser && (
+        <div className={modalStyles.overlay} style={{ zIndex: 2100 }}>
+          <div className={styles.content} style={{ width: 340 }}>
+            <h3 style={{ margin: "0 0 8px", color: "#fff", fontSize: 17 }}>
+              Delete dashboard account?
+            </h3>
+            <p style={{ fontSize: 13, color: "#a0aec0", marginBottom: 20 }}>
+              This will permanently remove{" "}
+              <strong style={{ color: "#fff" }}>
+                {confirmUser.display_name || confirmUser.username}
+              </strong>{" "}
+              (@{confirmUser.username}) from the dashboard. This cannot be undone.
+            </p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                className={styles.cancelBtn}
+                onClick={() => setConfirmUser(null)}
+                disabled={deletingId === confirmUser.id}
+              >
+                Cancel
+              </button>
+              <button
+                className={`${styles.actionBtn} ${styles.revokeBtn}`}
+                onClick={confirmDeleteUser}
+                disabled={deletingId === confirmUser.id}
+              >
+                {deletingId === confirmUser.id ? "Deleting..." : "Delete Account"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
