@@ -67,46 +67,62 @@ def send_text(to: str, message: str):
         return False, None
 
 
-def send_main_menu(to: str):
+_BIZ_SECTION = {
+    "title": "BizAdvise Services",
+    "rows": [
+        {"id": "biz_business", "title": "Business Consultancy",    "description": "Register your business / company"},
+        {"id": "biz_ngo",      "title": "NGO / Charity",           "description": "Start a charity or NGO"},
+        {"id": "biz_tax",      "title": "Taxation Services",        "description": "NTN, income tax, sales tax"},
+        {"id": "biz_accounts", "title": "Accountancy",              "description": "Bookkeeping, audits, reports"},
+        {"id": "biz_legal",    "title": "Corporate Legal",          "description": "Contracts, compliance, opinions"},
+        {"id": "biz_digital",  "title": "Digital Marketing",        "description": "SEO, ads, website, social media"},
+        {"id": "biz_urgent",   "title": "Urgent Help",              "description": "FBR notice, SECP, tax deadline"},
+        {"id": "biz_consult",  "title": "Talk to an Expert",        "description": "Speak with our team directly"},
+    ]
+}
+
+_LAW_SECTION = {
+    "title": "LawAdvise Services",
+    "rows": [
+        {"id": "online_nikah",   "title": "Online Nikah",           "description": "Online marriage guidance"},
+        {"id": "court_marriage", "title": "Court Marriage",          "description": "Court marriage process"},
+        {"id": "divorce_khula",  "title": "Divorce / Khula",        "description": "Divorce and Khula guidance"},
+        {"id": "child_custody",  "title": "Child Custody",          "description": "Custody and guardianship"},
+        {"id": "legal_docs",     "title": "Legal Documentation",    "description": "Document drafting"},
+        {"id": "contact_us",     "title": "Talk to an Expert",      "description": "Speak with our team directly"},
+    ]
+}
+
+
+def send_main_menu(to: str, source: str = None):
+    """source: 'biz' -> BizAdvise section only, 'law' -> LawAdvise section
+    only, anything else (None / '' / unrecognized) -> both sections, same
+    as the original combined menu."""
     if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
         return False, None
     try:
+        if source == "biz":
+            header_text = "BizAdvise Consulting"
+            sections = [_BIZ_SECTION]
+        elif source == "law":
+            header_text = "LawAdvise Consulting"
+            sections = [_LAW_SECTION]
+        else:
+            header_text = "BizAdvise & LawAdvise Consulting"
+            sections = [_BIZ_SECTION, _LAW_SECTION]
+
         payload = {
             "messaging_product": "whatsapp",
             "to": to,
             "type": "interactive",
             "interactive": {
                 "type": "list",
-                "header": {"type": "text", "text": "BizAdvise & LawAdvise Consulting"},
+                "header": {"type": "text", "text": header_text},
                 "body": {"text": "Welcome! How can we assist you today? Please select a service:"},
                 "footer": {"text": "Our experts are here to help you."},
                 "action": {
                     "button": "View Services",
-                    "sections": [
-                        {
-                            "title": "BizAdvise Services",
-                            "rows": [
-                                {"id": "biz_business", "title": "Business Consultancy",    "description": "Register your business / company"},
-                                {"id": "biz_ngo",      "title": "NGO / Charity",           "description": "Start a charity or NGO"},
-                                {"id": "biz_tax",      "title": "Taxation Services",        "description": "NTN, income tax, sales tax"},
-                                {"id": "biz_accounts", "title": "Accountancy",              "description": "Bookkeeping, audits, reports"},
-                                {"id": "biz_legal",    "title": "Corporate Legal",          "description": "Contracts, compliance, opinions"},
-                                {"id": "biz_digital",  "title": "Digital Marketing",        "description": "SEO, ads, website, social media"},
-                                {"id": "biz_urgent",   "title": "Urgent Help",              "description": "FBR notice, SECP, tax deadline"},
-                            ]
-                        },
-                        {
-                            "title": "LawAdvise Services",
-                            "rows": [
-                                {"id": "online_nikah",   "title": "Online Nikah",           "description": "Online marriage guidance"},
-                                {"id": "court_marriage", "title": "Court Marriage",          "description": "Court marriage process"},
-                                {"id": "divorce_khula",  "title": "Divorce / Khula",        "description": "Divorce and Khula guidance"},
-                                {"id": "child_custody",  "title": "Child Custody",          "description": "Custody and guardianship"},
-                                {"id": "legal_docs",     "title": "Legal Documentation",    "description": "Document drafting"},
-                                {"id": "contact_us",     "title": "Talk to an Expert",      "description": "Speak with our team directly"},
-                            ]
-                        }
-                    ]
+                    "sections": sections,
                 }
             }
         }

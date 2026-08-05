@@ -1,185 +1,149 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState, useEffect } from "react";
+import styles from "../styles/AccountModal.module.css";
+import modalStyles from "../styles/Modal.module.css";
 import { api } from "../api/client";
-import s from "../styles/Modal.module.css";
 
-export default function AccountModal({ user, onClose, onLoggedOut }) {
-  const modalRef = useRef(null);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [password, setPassword] = useState("");
+export default function AccountModal({ user, currentUser, onClose, onLoggedOut }) {
+  const activeUser = user || currentUser;
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [error, setError] = useState("");
-  const [deleting, setDeleting] = useState(false);
-
-  const [dashboardUsers, setDashboardUsers] = useState(null);
-  const [usersError, setUsersError] = useState("");
-  const [deletingUserId, setDeletingUserId] = useState(null);
-
-  const handleOverlay = (e) => {
-    if (!modalRef.current?.contains(e.target)) onClose();
-  };
 
   useEffect(() => {
-    if (!user?.is_admin) return;
-    api.listDashboardUsers()
-      .then((data) => setDashboardUsers(data.users))
-      .catch((e) => setUsersError(e.message || "Failed to load users"));
-  }, [user]);
+    loadUsers();
+  }, []);
 
-  const deleteOwnAccount = async () => {
+  const loadUsers = async () => {
+    setLoading(true);
     setError("");
-    setDeleting(true);
     try {
-      await api.deleteOwnAccount(password);
-      onLoggedOut();
-    } catch (e) {
-      setError(e.message || "Failed to delete account");
+      const data = await api.listDashboardUsers();
+      setUsers(Array.isArray(data) ? data : data.users || []);
+    } catch (err) {
+      setError(err.message || "Failed to fetch account directory.");
     } finally {
-      setDeleting(false);
+      setLoading(false);
     }
   };
 
-  const deleteOtherUser = async (id, username) => {
-    if (!window.confirm(`Delete the account "${username}"? This can't be undone.`)) return;
-    setDeletingUserId(id);
+  const handleDeleteUser = async (targetUser) => {
+    if (!window.confirm(`Delete dashboard account for ${targetUser.username || targetUser.display_name}?`)) {
+      return;
+    }
+
+    setDeletingId(targetUser.id);
     try {
-      await api.deleteDashboardUser(id);
-      setDashboardUsers((prev) => prev.filter((u) => u.id !== id));
-    } catch (e) {
-      alert(e.message || "Failed to delete user");
+      await api.deleteDashboardUser(targetUser.id);
+      setUsers((prev) => prev.filter((u) => u.id !== targetUser.id));
+    } catch (err) {
+      alert(err.message || "Failed to delete dashboard account.");
     } finally {
-      setDeletingUserId(null);
+      setDeletingId(null);
     }
   };
 
   return (
-    <div className={s.overlay} onMouseDown={handleOverlay}>
-      <div className={s.modal} ref={modalRef}>
-        <div className={s.header}>
-          <h2>My account</h2>
-          <button className={s.closeBtn} onClick={onClose}>×</button>
+    <div className={modalStyles.overlay}>
+      <div className={`${modalStyles.content} ${modalStyles.wide}`}>
+        <div className={styles.modalHeader}>
+          <div>
+            <h2 className={styles.title}>Account & User Directory</h2>
+            <p className={styles.subtitle}>
+              Logged in as: <strong>{activeUser?.display_name || activeUser?.username}</strong>
+            </p>
+          </div>
+          <button className={styles.closeBtn} onClick={onClose} aria-label="Close">
+            &times;
+          </button>
         </div>
 
-        <div className={s.body}>
-          <div style={{
-            background: "#f8f9fa", borderRadius: 10, padding: "12px 14px",
-            marginBottom: 20, display: "flex", flexDirection: "column", gap: 4,
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: "#111" }}>
-                {user.display_name || user.username}
-              </span>
-              {user.is_admin && (
-                <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10, fontWeight: 500, background: "#e8eefc", color: "#1a237e" }}>
-                  Admin
-                </span>
-              )}
-            </div>
-            <span style={{ fontSize: 12, color: "#888" }}>@{user.username}</span>
-          </div>
+        {error && <div className={styles.errorMessage}>{error}</div>}
 
-          {/* Admin: manage other users */}
-          {user.is_admin && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "#333", marginBottom: 8 }}>
-                All dashboard accounts
-              </div>
-              {usersError && <div style={{ fontSize: 12, color: "var(--color-red-dark, #96000a)" }}>{usersError}</div>}
-              {!dashboardUsers && !usersError && (
-                <div style={{ fontSize: 12, color: "#999" }}>Loading…</div>
-              )}
-              {dashboardUsers && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto" }}>
-                  {dashboardUsers.map((u) => (
-                    <div key={u.id} style={{
-                      display: "flex", alignItems: "center", justifyContent: "space-between",
-                      padding: "8px 10px", border: "1px solid #eee", borderRadius: 8, fontSize: 13,
-                    }}>
-                      <div>
-                        <div style={{ fontWeight: 500 }}>
-                          {u.display_name || u.username}
-                          {u.is_admin && <span style={{ marginLeft: 6, fontSize: 10, color: "#1a237e" }}>(admin)</span>}
-                          {u.id === user.id && <span style={{ marginLeft: 6, fontSize: 10, color: "#999" }}>(you)</span>}
-                        </div>
-                        <div style={{ fontSize: 11, color: "#999" }}>@{u.username}</div>
-                      </div>
-                      {u.id !== user.id && (
-                        <button
-                          onClick={() => deleteOtherUser(u.id, u.username)}
-                          disabled={deletingUserId === u.id}
-                          style={{
-                            padding: "5px 10px", background: "#fdecea", color: "var(--color-red-dark, #96000a)",
-                            border: "1px solid #f5c6c2", borderRadius: 6, cursor: "pointer", fontSize: 12,
-                          }}
-                        >
-                          {deletingUserId === u.id ? "Deleting…" : "Delete"}
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
+        <div className={styles.body}>
+          {loading ? (
+            <div className={styles.loaderState}>Loading user accounts...</div>
+          ) : (
+            <div className={styles.tableWrapper}>
+              <table className={styles.userTable}>
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Username</th>
+                    <th>Role</th>
+                    <th style={{ textAlign: "right" }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.length === 0 ? (
+                    <tr>
+                      <td colSpan="4" className={styles.emptyCell}>
+                        No dashboard accounts found.
+                      </td>
+                    </tr>
+                  ) : (
+                    users.map((u) => {
+                      const isSelf = activeUser?.id === u.id || activeUser?.username === u.username;
+
+                      return (
+                        <tr key={u.id || u.username}>
+                          <td>
+                            <div className={styles.userNameGroup}>
+                              <div className={styles.avatarCircle}>
+                                {(u.display_name || u.username || "U").charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <div className={styles.userName}>
+                                  {u.display_name || u.username}{" "}
+                                  {isSelf && <span className={styles.youBadge}>(You)</span>}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <div className={styles.contactDetails}>
+                              <div>@{u.username}</div>
+                            </div>
+                          </td>
+                          <td>
+                            <span className={`${styles.roleBadge} ${styles.badgeAdmin}`}>
+                              {u.role || "Agent"}
+                            </span>
+                          </td>
+                          <td style={{ textAlign: "right" }}>
+                            {!isSelf && (
+                              <button
+                                className={`${styles.actionBtn} ${styles.revokeBtn}`}
+                                onClick={() => handleDeleteUser(u)}
+                                disabled={deletingId === u.id}
+                              >
+                                {deletingId === u.id ? "Deleting..." : "Delete Account"}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
           )}
-
-          {/* Self delete-account */}
-          <div style={{ borderTop: "1px solid #eee", paddingTop: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-red-dark, #96000a)", marginBottom: 6 }}>
-              Danger zone
-            </div>
-            {!confirmingDelete ? (
-              <button
-                onClick={() => setConfirmingDelete(true)}
-                style={{
-                  padding: "8px 14px", background: "#fdecea", color: "var(--color-red-dark, #96000a)",
-                  border: "1px solid #f5c6c2", borderRadius: 8, cursor: "pointer", fontSize: 13,
-                }}
-              >
-                Delete my account
-              </button>
-            ) : (
-              <div>
-                <p style={{ fontSize: 12.5, color: "#666", marginTop: 0 }}>
-                  This permanently deletes your login. Enter your password to confirm.
-                </p>
-                {error && (
-                  <div style={{ fontSize: 12, color: "var(--color-red-dark, #96000a)", marginBottom: 8 }}>
-                    {error}
-                  </div>
-                )}
-                <input
-                  className={s.input}
-                  type="password"
-                  placeholder="Current password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  style={{ marginBottom: 10 }}
-                  autoFocus
-                />
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    onClick={() => { setConfirmingDelete(false); setPassword(""); setError(""); }}
-                    className={s.cancelBtn}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={deleteOwnAccount}
-                    disabled={deleting || !password}
-                    style={{
-                      padding: "8px 16px", background: "var(--color-red, #ca000e)", color: "#fff",
-                      border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13,
-                      opacity: deleting || !password ? 0.6 : 1,
-                    }}
-                  >
-                    {deleting ? "Deleting…" : "Permanently delete"}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
         </div>
 
-        <div className={s.footer}>
-          <button className={s.cancelBtn} onClick={onClose}>Close</button>
+        <div className={modalStyles.footer} style={{ display: "flex", justifyContent: "space-between" }}>
+          {onLoggedOut && (
+            <button
+              className={styles.revokeBtn}
+              style={{ padding: "8px 16px", borderRadius: 6, cursor: "pointer" }}
+              onClick={onLoggedOut}
+            >
+              Log Out
+            </button>
+          )}
+          <button className={styles.cancelBtn} onClick={onClose}>
+            Close
+          </button>
         </div>
       </div>
     </div>

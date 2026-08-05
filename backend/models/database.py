@@ -66,6 +66,17 @@ def init_db():
         if "duplicate column name" not in str(e).lower():
             print(f"init_db migration warning: {e}")
 
+    # 'source' records which ad campaign brought this user in — 'biz',
+    # 'law', or '' if they came in organically (direct message, no ad
+    # referral, or an ad we couldn't classify by keyword). Set once on
+    # first contact and reused on every later "menu" request so the
+    # user keeps seeing the menu that matches the ad they clicked.
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN source TEXT DEFAULT ''")
+    except sqlite3.OperationalError as e:
+        if "duplicate column name" not in str(e).lower():
+            print(f"init_db migration warning: {e}")
+
     # Track whether this column is being added for the very first time —
     # the one-time backfill below must only run in that case. If it ran
     # on every startup instead (matching on last_read_message_id == 0),

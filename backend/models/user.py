@@ -2,7 +2,13 @@ from datetime import datetime, timezone
 from models.database import get_db
 
 
-def save_user(phone, socketio, name=""):
+def save_user(phone, socketio, name="", source=None):
+    """source, if given, is an ad-campaign hint ('biz' or 'law') detected
+    from a WhatsApp ad-click referral on this message. It's only ever
+    written into the DB when the user doesn't already have one recorded
+    — so the first ad a person clicks decides their menu, and it won't
+    get silently overwritten later (e.g. by them clicking a different
+    ad, or a message that happens to carry no/other referral data)."""
     conn = get_db()
     cursor = conn.cursor()
     try:
@@ -30,6 +36,13 @@ def save_user(phone, socketio, name=""):
                 "UPDATE users SET last_seen=? WHERE phone=?",
                 (now, phone),
             )
+
+        if source:
+            cursor.execute(
+                "UPDATE users SET source=? WHERE phone=? AND (source IS NULL OR source='')",
+                (source, phone),
+            )
+
         conn.commit()
 
         if is_new:
@@ -61,6 +74,21 @@ def get_user_mode(phone) -> int:
     except Exception as e:
         print(f"get_user_mode error: {e}")
         return 0
+    finally:
+        conn.close()
+
+
+def get_user_source(phone) -> str:
+    """Returns 'biz', 'law', or '' (unknown / organic) for this user."""
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT source FROM users WHERE phone=?", (phone,))
+        row = cursor.fetchone()
+        return (row["source"] or "") if row else ""
+    except Exception as e:
+        print(f"get_user_source error: {e}")
+        return ""
     finally:
         conn.close()
 

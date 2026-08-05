@@ -11,7 +11,7 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from flask import Blueprint, request, current_app
 
-from models.user import save_user, get_user_mode
+from models.user import save_user, get_user_mode, get_user_source
 from models.message import save_message, update_message_status
 from models.database import get_db
 from bot.ai_client import ask_ai
@@ -43,8 +43,72 @@ _user_service_context = {}
 _contact_collection = {}   # phone -> {"step": "awaiting_name"/"awaiting_mobile"/"awaiting_time", "name": ..., "mobile": ...}
 _user_context = {}         # phone -> "main" once a consultation flow completes (kept for future use)
 
+# Which menu variant was actually last SHOWN to this phone number —
+# None/"biz"/"law", same vocabulary as `source`. This is deliberately
+# separate from `source` (the permanently-locked ad-attribution value):
+# `source` decides the very first automatic welcome menu after someone
+# clicks an ad, but an explicit typed "menu" always shows the combined
+# menu regardless of source (see MENU_TRIGGERS handling below) — so a
+# LawAdvise-ad user who asks for "menu" isn't permanently walled off
+# from BizAdvise services just because of which ad they clicked first.
+# Numeric replies afterward need to be interpreted against whichever
+# menu the person is actually looking at, not against their locked
+# source — otherwise "3" would mean different things depending on
+# which dict happens to be consulted. Not persisted to the DB: it only
+# needs to survive for the current chat session, and defaults back to
+# `source` (via _user_menu_view.get(phone, source)) whenever we haven't
+# explicitly shown this phone a menu yet in this process's lifetime.
+_user_menu_view = {}
+
 CONTACT = "03003029093 / 03332454111"
 MEDIA_FOLDER = "media_files"
+
+# ── Ad-based menu routing ────────────────────────────────────────────────
+# When someone taps a "Click to WhatsApp" ad, WhatsApp attaches a
+# `referral` object to their very first message — containing the ad's
+# headline, body text and source URL (see _detect_ad_source below). We
+# scan that text for keywords to decide whether they came from a
+# LawAdvise ad or a BizAdvise ad, and show them ONLY that brand's menu
+# instead of the combined one. Add more phrases here as new ad
+# campaigns go live — no code changes needed elsewhere.
+LAW_AD_KEYWORDS = {
+    "law", "legal", "lawadvise", "law advise", "nikah", "marriage",
+    "divorce", "khula", "custody", "guardianship", "inheritance",
+    "nafaqa", "lawyer", "advocate", "family law", "property law",
+}
+BIZ_AD_KEYWORDS = {
+    "biz", "business", "bizadvise", "biz advise", "tax", "taxation",
+    "ngo", "charity", "accountancy", "accounting", "bookkeeping",
+    "company registration", "trademark", "copyright", "patent",
+    "secp", "fbr", "ntn", "startup", "digital marketing",
+}
+
+
+def _detect_ad_source(msg: dict):
+    """Looks at this message's `referral` block (only present on the
+    first message after someone taps a Click-to-WhatsApp ad) and
+    keyword-matches its headline/body/source_url to decide which brand
+    the ad was for. Returns 'biz', 'law', or None if there's no
+    referral, or the text doesn't clearly point to one brand (e.g. it
+    mentions both, or neither)."""
+    referral = msg.get("referral") or {}
+    if not referral:
+        return None
+
+    haystack = " ".join(
+        str(referral.get(field, "")) for field in ("headline", "body", "source_url")
+    ).lower()
+    if not haystack.strip():
+        return None
+
+    is_law = any(kw in haystack for kw in LAW_AD_KEYWORDS)
+    is_biz = any(kw in haystack for kw in BIZ_AD_KEYWORDS)
+
+    if is_law and not is_biz:
+        return "law"
+    if is_biz and not is_law:
+        return "biz"
+    return None  # ambiguous (matched both, or neither) — fall back to combined menu
 
 # Marker phrase embedded in every choice-gated prompt below — used to
 # detect "this message just asked the customer to choose between a
@@ -440,6 +504,73 @@ TEXT_SERVICE_MENUS = {
     "17": ("Talk to an Expert", "contact_us"),
 }
 
+TEXT_MAIN_MENU_BIZ = """Welcome to *BizAdvise Consulting* 🏢
+
+How can we assist you? Please reply with a number:
+
+1️⃣ Start a New Business / Business Consultancy
+2️⃣ Start a Charity / NGO Registration
+3️⃣ File My Taxes — Taxation Services
+4️⃣ Manage My Accounts — Accountancy
+5️⃣ Corporate Legal Advisory
+6️⃣ Grow My Business Online — Digital Marketing
+7️⃣ 🚨 Urgent Help
+8️⃣ 👨‍💼 Talk to an Expert"""
+
+TEXT_MAIN_MENU_LAW = """Welcome to *LawAdvise Consulting* ⚖️
+
+How can we assist you? Please reply with a number:
+
+1️⃣ Online Marriage / Online Nikah
+2️⃣ Court Marriage
+3️⃣ Divorce / Khula
+4️⃣ Child Custody / Guardianship
+5️⃣ Maintenance (Nafaqa) / Dowery
+6️⃣ Property Law
+7️⃣ Inheritance
+8️⃣ Legal Documentation
+9️⃣ Corporate Law
+🔟 👨‍💼 Talk to an Expert"""
+
+# Brand-scoped number -> (title, service_id) maps, renumbered from 1 so
+# each brand's text menu reads cleanly on its own (rather than a
+# LawAdvise-only visitor seeing options that start at "8️⃣").
+TEXT_SERVICE_MENUS_BIZ = {
+    "1": ("Start a New Business / Business Consultancy", "biz_business"),
+    "2": ("NGO / Charity Registration", "biz_ngo"),
+    "3": ("Taxation Services", "biz_tax"),
+    "4": ("Accountancy Services", "biz_accounts"),
+    "5": ("Corporate Legal Advisory", "biz_legal"),
+    "6": ("Digital Marketing", "biz_digital"),
+    "7": ("Urgent Help", "biz_urgent"),
+    "8": ("Talk to an Expert", "biz_consult"),
+}
+
+TEXT_SERVICE_MENUS_LAW = {
+    "1": ("Online Marriage / Online Nikah", "online_nikah"),
+    "2": ("Court Marriage", "court_marriage"),
+    "3": ("Divorce / Khula", "divorce_khula"),
+    "4": ("Child Custody / Guardianship", "child_custody"),
+    "5": ("Maintenance / Dowery", "maintenance"),
+    "6": ("Property Law", "property_law"),
+    "7": ("Inheritance", "inheritance"),
+    "8": ("Legal Documentation", "legal_docs"),
+    "9": ("Corporate Law", "corporate_law"),
+    "10": ("Talk to an Expert", "contact_us"),
+}
+
+
+def _service_menu_map(source: str) -> dict:
+    """Which number -> service map applies to this user, based on which
+    ad (if any) brought them in. Unknown/organic users keep seeing the
+    original combined 1-17 menu, unchanged."""
+    if source == "biz":
+        return TEXT_SERVICE_MENUS_BIZ
+    if source == "law":
+        return TEXT_SERVICE_MENUS_LAW
+    return TEXT_SERVICE_MENUS
+
+
 MENU_TRIGGERS = {"menu", "options", "start", "help", "main menu", "مینو", "آپشنز", "info", "information", "details", "services"}
 GREETING_WORDS = {"hi", "hello", "hey", "helo", "hii", "salam", "assalam", "السلام", "assalamualaikum", "aoa"}
 
@@ -639,7 +770,16 @@ def _handle_message(msg, socketio, name=""):
     msg_type = msg.get("type", "text")
     msg_id = msg.get("id")
 
-    is_new = save_user(phone, socketio, name=name)
+    # If this message carries a Click-to-WhatsApp ad referral, figure out
+    # which brand it points to. Passed into save_user so it gets recorded
+    # against this phone number the first time — and only the first time
+    # — a source is available for them (see save_user's docstring).
+    ad_source = _detect_ad_source(msg)
+    is_new = save_user(phone, socketio, name=name, source=ad_source)
+    # Whatever's on file for this user now (just-recorded ad_source for a
+    # brand-new contact, or whatever was recorded on a previous contact) —
+    # this decides which menu they see.
+    source = ad_source or get_user_source(phone)
 
     # A brand-new contact's first message might not be plain text at all
     # — a photo of their CNIC, a voice note, a shared location. Without
@@ -651,7 +791,8 @@ def _handle_message(msg, socketio, name=""):
     if is_new and msg_type != "text":
         _user_service_context.pop(phone, None)
         _contact_collection.pop(phone, None)
-        _executor.submit(_send_welcome_menu, phone, socketio)
+        _user_menu_view[phone] = source
+        _executor.submit(_send_welcome_menu, phone, socketio, source)
 
     if msg_type == "text":
         text = msg["text"]["body"].strip()
@@ -671,10 +812,25 @@ def _handle_message(msg, socketio, name=""):
             _handle_contact_collection(phone, text, socketio)
             return
 
-        if is_new or text_lower in MENU_TRIGGERS:
+        if is_new:
             _user_service_context.pop(phone, None)
             _contact_collection.pop(phone, None)
-            _executor.submit(_send_welcome_menu, phone, socketio)
+            _user_menu_view[phone] = source
+            _executor.submit(_send_welcome_menu, phone, socketio, source)
+            return
+
+        if text_lower in MENU_TRIGGERS:
+            # An explicit "menu" request is a different signal than the
+            # passive first-touch welcome — the person is actively asking
+            # what's available, so always show the full combined menu,
+            # even if this phone number is permanently attributed to a
+            # LawAdvise or BizAdvise ad. That attribution still decides
+            # their very first automatic welcome; it just no longer boxes
+            # them out of the other brand's services on request.
+            _user_service_context.pop(phone, None)
+            _contact_collection.pop(phone, None)
+            _user_menu_view[phone] = None
+            _executor.submit(_send_welcome_menu, phone, socketio, None)
             return
 
         if text_lower in GREETING_WORDS:
@@ -699,8 +855,17 @@ def _handle_message(msg, socketio, name=""):
             del _user_service_context[phone]
 
         selection = _extract_menu_selection(text)
-        if selection and selection in TEXT_SERVICE_MENUS:
-            title, service_id = TEXT_SERVICE_MENUS[selection]
+        # Interpret the number against whichever menu this phone was
+        # actually last shown (_user_menu_view), not against their
+        # permanently-locked ad `source` — if they typed "menu" and got
+        # the combined 1-17 list, "10" must mean "Divorce / Khula" from
+        # that list, not whatever "10" would mean on a brand-only menu.
+        # Falls back to `source` if we haven't shown this phone a menu
+        # yet in this process's lifetime (e.g. server just restarted).
+        active_view = _user_menu_view.get(phone, source)
+        service_menu_map = _service_menu_map(active_view)
+        if selection and selection in service_menu_map:
+            title, service_id = service_menu_map[selection]
             if service_id in SERVICE_MENU_IDS:
                 _user_service_context[phone] = service_id
                 _executor.submit(_send_service_menu_safe, phone, service_id, socketio)
@@ -873,13 +1038,32 @@ def _handle_contact_collection(phone, text, socketio):
         log.info(f"Consultation booked: {name} ({mobile}) — best time: {best_time}")
 
 
-def _send_welcome_menu(phone, socketio):
+def _send_welcome_menu(phone, socketio, source=None):
+    """source: 'biz' or 'law' shows that brand's menu only (detected from
+    a Click-to-WhatsApp ad referral, or previously recorded for this
+    user); anything else shows the original combined menu."""
     try:
-        success, wa_id = send_main_menu(phone)
+        success, wa_id = send_main_menu(phone, source=source)
         if success:
-            save_message(phone, TEXT_MAIN_MENU_1 + "\n" + TEXT_MAIN_MENU_2,
+            if source == "biz":
+                combined_text = TEXT_MAIN_MENU_BIZ
+            elif source == "law":
+                combined_text = TEXT_MAIN_MENU_LAW
+            else:
+                combined_text = TEXT_MAIN_MENU_1 + "\n" + TEXT_MAIN_MENU_2
+            save_message(phone, combined_text,
                          "bot", socketio, status="sent",
                          whatsapp_message_id=wa_id, source="ai")
+        elif source == "biz":
+            success1, wa_id1 = send_text(phone, TEXT_MAIN_MENU_BIZ)
+            save_message(phone, TEXT_MAIN_MENU_BIZ, "bot", socketio,
+                         status="sent" if success1 else "failed",
+                         whatsapp_message_id=wa_id1, source="ai")
+        elif source == "law":
+            success1, wa_id1 = send_text(phone, TEXT_MAIN_MENU_LAW)
+            save_message(phone, TEXT_MAIN_MENU_LAW, "bot", socketio,
+                         status="sent" if success1 else "failed",
+                         whatsapp_message_id=wa_id1, source="ai")
         else:
             success1, wa_id1 = send_text(phone, TEXT_MAIN_MENU_1)
             save_message(phone, TEXT_MAIN_MENU_1, "bot", socketio,

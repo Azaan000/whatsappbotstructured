@@ -8,6 +8,7 @@ from models.dashboard_user import (
     delete_dashboard_user,
     verify_dashboard_password,
     dashboard_admin_count,
+    update_user_admin_status,
 )
 from utils.auth import issue_token, verify_token, require_auth, require_admin
 
@@ -127,3 +128,24 @@ def delete_user(target_id):
     if not delete_dashboard_user(target_id):
         return jsonify({"error": "Could not delete user"}), 500
     return jsonify({"ok": True})
+
+
+@auth_bp.route("/dashboard-users/<int:target_id>/admin", methods=["PUT"])
+@require_auth
+@require_admin
+def update_user_admin(target_id):
+    """Admin-only: promote or demote a dashboard user to/from admin.
+    An admin cannot demote the last remaining admin, so the system
+    always has at least one admin able to manage users."""
+    data = request.json or {}
+    new_is_admin = data.get("is_admin")
+
+    if new_is_admin is None:
+        return jsonify({"error": "is_admin field required"}), 400
+
+    success, error = update_user_admin_status(target_id, new_is_admin)
+    if not success:
+        return jsonify({"error": error}), 400 if "last remaining" in error else 500
+
+    updated_user = get_dashboard_user(target_id)
+    return jsonify({"ok": True, "user": updated_user})

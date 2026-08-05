@@ -163,6 +163,37 @@ def list_dashboard_users():
         conn.close()
 
 
+def update_user_admin_status(target_user_id, new_is_admin):
+    """Promote or demote a dashboard user. An admin cannot demote the
+    last remaining admin (so the system always has at least one admin).
+
+    Returns (success, error_message). One of these is set to None.
+    """
+    target = get_dashboard_user(target_user_id)
+    if not target:
+        return False, "User not found"
+
+    # Prevent removing the last admin
+    if target.get("is_admin") and not new_is_admin:
+        if dashboard_admin_count() <= 1:
+            return False, "Cannot demote the last remaining admin"
+
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE dashboard_users SET is_admin=? WHERE id=?",
+            (int(bool(new_is_admin)), target_user_id),
+        )
+        conn.commit()
+        return True, None
+    except Exception as e:
+        print(f"update_user_admin_status error: {e}")
+        return False, "Could not update user"
+    finally:
+        conn.close()
+
+
 def verify_dashboard_password(user_id, password):
     """Used to re-confirm a password before a destructive action like
     account deletion, even though the user already has a valid token."""

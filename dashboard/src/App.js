@@ -31,9 +31,11 @@ function getSeenConsults() {
   try { return new Set(JSON.parse(localStorage.getItem("seen_consults") || "[]")); }
   catch { return new Set(); }
 }
+
 function saveSeenConsults(set) {
   try { localStorage.setItem("seen_consults", JSON.stringify([...set])); } catch {}
 }
+
 function markConsultSeen(phone) {
   const seen = getSeenConsults();
   seen.add(phone);
@@ -46,7 +48,7 @@ function showBrowserNotification(title, body) {
       body,
       icon: "/favicon.ico",
       badge: "/favicon.ico",
-      requireInteraction: true,  // stays until dismissed
+      requireInteraction: true,
     });
     n.onclick = () => { window.focus(); n.close(); };
   }
@@ -72,9 +74,6 @@ function Dashboard({ authUser, onLogout }) {
 
   useEffect(() => { usersRef.current = users; }, [users]);
 
-  // Request browser notification permission on first load, and unlock
-  // the shared AudioContext as soon as the user interacts with the page
-  // (required by browser autoplay policy for the notification sound).
   useEffect(() => {
     requestNotificationPermission();
     unlockAudioOnFirstGesture();
@@ -141,10 +140,6 @@ function Dashboard({ authUser, onLogout }) {
         });
       }
 
-      // Any outgoing message to this customer means a reply just went
-      // out — clear the typing indicator regardless of whether it came
-      // from the AI or from staff manually jumping in, since either way
-      // "still composing" is now stale.
       if (data.direction === "bot") {
         setTyping(false);
         if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
@@ -191,10 +186,6 @@ function Dashboard({ authUser, onLogout }) {
       if (isAiMode) {
         setTyping(true);
         if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-        // Safety-net only — normally this gets cleared the instant the
-        // actual reply is sent (see handleNewMessage above). This just
-        // prevents it from hanging forever if a reply never arrives
-        // for some reason (failed send, unexpected code path, etc.).
         typingTimerRef.current = setTimeout(() => setTyping(false), 8000);
       }
     }
@@ -217,48 +208,29 @@ function Dashboard({ authUser, onLogout }) {
   const handleConsultationBooked = useCallback((data) => {
     trace("[TRACE 2] handleConsultationBooked received:", data);
     const { phone, name, mobile, best_time } = data;
-    // If staff already has this exact chat open, they're watching the
-    // booking happen live — don't count it as "unseen" (it would inflate
-    // the Consultations badge for something they're actively looking at).
-    // Sound/notification/toast still fire either way since those are
-    // useful regardless of which chat is open.
     const isViewingThisChat = selectedPhoneRef.current === phone;
 
-    // 1. Play sound
-    trace("[TRACE 3] calling playNotificationSound()");
     playNotificationSound();
 
-    // 2. Browser notification
     showBrowserNotification(
       "📋 New Consultation Booked!",
       `${name || phone} — ${mobile} — Best time: ${best_time}`
     );
 
     if (isViewingThisChat) {
-      // Already watching it live — make sure it's recorded as seen
-      // rather than surfacing a red highlight/badge for a chat that's
-      // already open in front of them.
       markConsultSeen(phone);
     } else {
-      // 3. Highlight user red in sidebar
       setBookedConsultPhones((prev) => new Set(prev).add(phone));
-
-      // 4. Mark as unseen consultation
       const seen = getSeenConsults();
       seen.delete(phone);
       saveSeenConsults(seen);
       setUnseenConsultPhones((prev) => new Set(prev).add(phone));
     }
 
-    // 5. Show in-app toast
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setConsultToast({ phone, name, mobile, best_time });
     toastTimerRef.current = setTimeout(() => setConsultToast(null), 8000);
 
-    // 6. Let the Consultations modal know, in case it's already open —
-    // without this it only ever fetched once on mount, so a booking that
-    // arrived while staff had the tab open wouldn't show up (or make a
-    // sound there) until they closed and reopened it.
     setLatestBooking({ phone, name, mobile, best_time, at: Date.now() });
   }, [selectedPhoneRef]);
 
@@ -309,7 +281,6 @@ function Dashboard({ authUser, onLogout }) {
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     markConsultSeen(user.phone);
     setUnseenConsultPhones((prev) => { const n = new Set(prev); n.delete(user.phone); return n; });
-    // Clear red highlight when chat is opened
     setBookedConsultPhones((prev) => { const n = new Set(prev); n.delete(user.phone); return n; });
   }, [loadMessages, markAsRead]);
 
@@ -324,9 +295,6 @@ function Dashboard({ authUser, onLogout }) {
     appendMessage(temp);
     try {
       const result = await api.sendMessage(selectedPhone, text);
-      // Attach the real whatsapp_message_id to THIS specific tempId right
-      // away, rather than leaving it to updateMessageStatus's fallback to
-      // guess which pending message a later status event belongs to.
       updateTempStatus(tempId, "sent", { whatsapp_message_id: result?.message_id || "" });
     }
     catch { removeMessage(temp); alert("Failed to send message."); }
@@ -458,7 +426,7 @@ function Dashboard({ authUser, onLogout }) {
         />
       </div>
 
-      {/* Connection dot */}
+      {/* Connection status indicator */}
       <div style={{ position: "fixed", bottom: 12, right: 12, background: connected ? "#4caf50" : "#f44336", color: "#fff", padding: "4px 10px", borderRadius: 20, fontSize: 11, display: "flex", alignItems: "center", gap: 5, boxShadow: "0 2px 6px rgba(0,0,0,0.2)", zIndex: 999 }}>
         <span style={{ width: 7, height: 7, background: "#fff", borderRadius: "50%", animation: "pulse 1.2s infinite", display: "inline-block" }} />
         {connected ? "Live" : "Reconnecting…"}
@@ -521,13 +489,14 @@ const barStyle = {
   borderBottom: "3px solid var(--color-gold)",
   flexShrink: 0, boxShadow: "0 2px 8px rgba(3,36,79,0.25)", gap: 12,
 };
+
 const btnStyle = (bg, color) => ({
   padding: "6px 14px", background: bg, color,
   border: "none", borderRadius: 20, cursor: "pointer",
   fontWeight: 600, fontSize: 12, whiteSpace: "nowrap",
 });
 
-// ── Top-level App: handles auth, then hands off to the Dashboard ──────────
+// ── Top-level App Component ──────────────────────────────────────────────
 
 export default function App() {
   const [authUser, setAuthUser] = useState(null);
@@ -538,15 +507,11 @@ export default function App() {
     setAuthUser(null);
   }, []);
 
-  // Any 401 from the API anywhere in the dashboard drops back to login.
   useEffect(() => {
     setUnauthorizedHandler(() => setAuthUser(null));
     return () => setUnauthorizedHandler(null);
   }, []);
 
-  // On first load, if a token was saved from a previous session, verify
-  // it's still valid (and get the current user info) before showing the
-  // dashboard — this is what lets a refresh keep you logged in.
   useEffect(() => {
     const token = getToken();
     if (!token) { setCheckingSession(false); return; }

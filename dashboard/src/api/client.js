@@ -13,8 +13,11 @@ export function getToken() {
 }
 
 export function getStoredUser() {
-  try { return JSON.parse(localStorage.getItem(USER_KEY) || "null"); }
-  catch { return null; }
+  try {
+    return JSON.parse(localStorage.getItem(USER_KEY) || "null");
+  } catch {
+    return null;
+  }
 }
 
 function setSession(token, user) {
@@ -52,14 +55,17 @@ async function request(path, options = {}) {
     headers: headers(),
     ...options,
   });
+
   if (res.status === 401) {
     clearSession();
     onUnauthorized();
   }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || "Request failed");
   }
+
   if (res.status === 204) return null;
   return res.json();
 }
@@ -99,7 +105,7 @@ export const api = {
   deleteDashboardUser: (id) =>
     request(`/dashboard-users/${id}`, { method: "DELETE" }),
 
-  // ── Existing dashboard endpoints ──────────────────────────────────
+  // ── Dashboard endpoints ───────────────────────────────────────────
   getUsers: () => request("/users"),
 
   getMessages: (phone, search = "") =>
@@ -116,12 +122,16 @@ export const api = {
     form.append("file", file);
     form.append("phone", phone);
     if (caption) form.append("caption", caption);
+
     return fetch(`${BASE}/send-file`, {
       method: "POST",
       headers: { "X-Dashboard-Token": authToken() },
       body: form,
     }).then(async (r) => {
-      if (r.status === 401) { clearSession(); onUnauthorized(); }
+      if (r.status === 401) {
+        clearSession();
+        onUnauthorized();
+      }
       if (!r.ok) throw new Error("Failed to send file");
       return r.json();
     });
