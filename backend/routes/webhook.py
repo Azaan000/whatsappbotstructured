@@ -60,7 +60,8 @@ _user_context = {}         # phone -> "main" once a consultation flow completes 
 # explicitly shown this phone a menu yet in this process's lifetime.
 _user_menu_view = {}
 
-CONTACT = "03003029093 / 03332454111"
+CONTACT = "03003029039 / 03332454111"       # BizAdvise
+LAW_CONTACT = "03003029039 / 03351340999"    # LawAdvise
 MEDIA_FOLDER = "media_files"
 
 # ── Ad-based menu routing ────────────────────────────────────────────────
@@ -118,15 +119,22 @@ def _detect_ad_source(msg: dict):
 _CALLBACK_CHOICE_MARKER = "call you back? Reply:"
 
 
-def _consult_choice_message(intro: str) -> str:
+def _consult_choice_message(intro: str, contact: str = None) -> str:
     """Shared template for 'Talk to Expert' / 'Talk to Lawyer' style
     replies — as opposed to explicit 'Book Consultation' replies, these
     give the phone number immediately and ASK whether the customer wants
     a callback, rather than assuming it and immediately demanding their
-    name/mobile/time."""
+    name/mobile/time.
+
+    `contact` lets LawAdvise flows pass LAW_CONTACT instead of silently
+    falling back to the BizAdvise number — previously every "Talk to an
+    Expert" reply (including the LawAdvise ones) always quoted CONTACT,
+    so a LawAdvise customer asking for a lawyer was handed the BizAdvise
+    line."""
+    contact = contact or CONTACT
     return (
         f"{intro}\n\n"
-        f"📞 Call or WhatsApp us directly: {CONTACT}\n\n"
+        f"📞 Call or WhatsApp us directly: {contact}\n\n"
         f"Would you like our team to call you back? Reply:\n"
         f"1️⃣ Yes, call me back\n"
         f"2️⃣ No thanks, I'll reach out myself"
@@ -225,40 +233,40 @@ BUTTON_RESPONSES = {
     "nikah_procedure": f"📋 *Online Nikah Procedure:*\n\n• At least one party must be residing outside Pakistan.\n• The legal process is identical to a conventional Nikah.\n• One party participates remotely through a secure online platform.\n\nWould you like to book a consultation with our legal team?",
     "nikah_documents": f"📄 *Required Documents for Online Nikah:*\n\nFrom both parties:\n• Valid CNIC / NICOP or Passport\n• Recent passport-size photographs\n• 2 Witnesses (CNIC of both witnesses)\n\nWould you like to book a consultation?",
     "nikah_consult": _consult_choice_message(
-        "💬 *Online Nikah — Talk to a Lawyer*"
+        "💬 *Online Nikah — Talk to a Lawyer*", contact=LAW_CONTACT
     ),
     "court_procedure": "📋 *Court Marriage Procedure:*\n\n• Both parties must be present in person.\n• All legal requirements are the same as a conventional Nikah.\n\nWould you like to book a consultation?",
     "court_documents": "📄 *Required Documents for Court Marriage:*\n\nFrom both parties:\n• Valid CNIC / NICOP or Passport\n• Recent passport-size photographs\n• 2 Witnesses (CNIC of both witnesses)\n\nWould you like to book a consultation?",
-    "court_consult": "💬 Our legal team will be in touch shortly to assist you with Court Marriage.",
+    "court_consult": f"💬 Our legal team will be in touch shortly to assist you with Court Marriage.\n\n📞 Call or WhatsApp us directly: {LAW_CONTACT}",
     "divorce_procedure": "📋 *Divorce / Khula Procedure:*\n\nEvery case is unique. Please consult one of our legal experts for advice tailored to your specific situation.",
     "divorce_timeline": "⏳ *Divorce / Khula Timeline:*\n\nThe timeline varies depending on the nature and complexity of your case.",
-    "divorce_consult": "💬 Our legal expert will contact you shortly to discuss your Divorce / Khula case. Your matter will be handled with full confidentiality.",
+    "divorce_consult": f"💬 Our legal expert will contact you shortly to discuss your Divorce / Khula case. Your matter will be handled with full confidentiality.\n\n📞 Call or WhatsApp us directly: {LAW_CONTACT}",
     "custody_procedure": "📋 *Child Custody / Guardianship:*\n\nThis matter requires a detailed legal assessment. Our legal team will be happy to assist you personally.",
     "custody_timeline": "⏳ *Timeline:*\n\nEach case is unique; the estimated timeline may vary.",
     "custody_consult": _consult_choice_message(
-        "💬 *Child Custody / Guardianship — Talk to an Expert*"
+        "💬 *Child Custody / Guardianship — Talk to an Expert*", contact=LAW_CONTACT
     ),
     "maintenance_procedure": "📋 *Maintenance (Nafaqa) / Dowery:*\n\nThis matter cannot be accurately assessed through chat alone. Our legal team will assist you personally.",
     "maintenance_timeline": "⏳ *Timeline:*\n\nEach case is unique; the estimated timeline may vary.",
     "maintenance_consult": _consult_choice_message(
-        "💬 *Maintenance / Dowery — Talk to an Expert*"
+        "💬 *Maintenance / Dowery — Talk to an Expert*", contact=LAW_CONTACT
     ),
     "property_procedure": "📋 *Property Law:*\n\nThis requires a detailed legal consultation. Please connect with one of our lawyers.",
     "property_timeline": "⏳ *Timeline:*\n\nThe duration depends on the legal process and circumstances of your case.",
-    "property_consult": "💬 Our property law expert will contact you shortly.",
+    "property_consult": f"💬 Our property law expert will contact you shortly.\n\n📞 Call or WhatsApp us directly: {LAW_CONTACT}",
     "inheritance_procedure": "📋 *Inheritance:*\n\nThis requires a detailed legal consultation. Please connect with one of our lawyers.",
     "inheritance_timeline": "⏳ *Timeline:*\n\nThe duration depends on the legal process and circumstances of your case.",
     "inheritance_consult": _consult_choice_message(
-        "💬 *Inheritance — Talk to an Expert*"
+        "💬 *Inheritance — Talk to an Expert*", contact=LAW_CONTACT
     ),
     "corporate_procedure": "📋 *Corporate Law:*\n\nThis requires a detailed legal consultation. Please connect with one of our lawyers.",
     "corporate_timeline": "⏳ *Timeline:*\n\nThe duration depends on the legal process and circumstances of your case.",
     "corporate_consult": _consult_choice_message(
-        "💬 *Corporate Law — Talk to an Expert*"
+        "💬 *Corporate Law — Talk to an Expert*", contact=LAW_CONTACT
     ),
     "docs_procedure": "📋 *Legal Documentation:*\n\nThis requires a detailed legal consultation. Our legal team can assist with document drafting and verification.",
     "docs_timeline": "⏳ *Timeline:*\n\nThe duration depends on the type and complexity of documentation required.",
-    "docs_consult": "💬 Our legal team will contact you shortly to assist with your documentation needs.",
+    "docs_consult": f"💬 Our legal team will contact you shortly to assist with your documentation needs.\n\n📞 Call or WhatsApp us directly: {LAW_CONTACT}",
     "contact_us": _consult_choice_message("📞 *Contact Us*"),
 }
 
@@ -992,9 +1000,10 @@ def _handle_contact_collection(phone, text, socketio):
             _executor.submit(_send_text_reply, phone,
                              "Great! Let's get you booked in. Please share your *Name*:", socketio)
         elif choice == "no":
+            reply_contact = state.get("contact", CONTACT)
             del _contact_collection[phone]
             _executor.submit(_send_text_reply, phone,
-                             f"No problem! Feel free to reach us anytime at 📞 {CONTACT}.", socketio)
+                             f"No problem! Feel free to reach us anytime at 📞 {reply_contact}.", socketio)
         else:
             # Didn't understand the reply — re-ask rather than silently
             # dropping into the collection flow (or out of it) on a guess.
@@ -1019,11 +1028,12 @@ def _handle_contact_collection(phone, text, socketio):
         name = state.get("name", "")
         mobile = state.get("mobile", "")
         best_time = text
+        reply_contact = state.get("contact", CONTACT)
         del _contact_collection[phone]
         confirmation = (
             f"✅ *Thank you, {name}!*\n\n"
             f"Our team will contact you at *{mobile}* during *{best_time}*.\n\n"
-            f"If urgent, you can also reach us at:\n📞 {CONTACT}"
+            f"If urgent, you can also reach us at:\n📞 {reply_contact}"
         )
         _executor.submit(_send_text_reply, phone, confirmation, socketio)
         _user_context[phone] = "main"
@@ -1103,14 +1113,24 @@ def _send_text_reply(phone, text, socketio):
         # "Book Consultation" paths — explicit booking intent, go
         # straight into the Name -> Mobile -> Best Time collection flow.
         if text in CONSULT_TRIGGER_TEXTS:
-            _contact_collection[phone] = {"step": "awaiting_name"}
+            # CONSULT_TRIGGER_TEXTS is exclusively the LawAdvise
+            # "Book Consultation" replies (court/divorce/property/docs) —
+            # there's no BizAdvise path through here, so LAW_CONTACT is
+            # correct unconditionally rather than falling back to CONTACT.
+            _contact_collection[phone] = {"step": "awaiting_name", "contact": LAW_CONTACT}
         # "Talk to Expert" / "Talk to Lawyer" paths — more ambiguous
         # intent, so ask first whether they even want a callback before
         # collecting any contact info. Matched by marker phrase rather
         # than exact text, so it doesn't silently break if the wording
         # of any individual prompt changes later.
         elif _is_consult_choice_prompt(text):
-            _contact_collection[phone] = {"step": "awaiting_callback_choice"}
+            _contact_collection[phone] = {
+                "step": "awaiting_callback_choice",
+                # Remembers which brand's number was just quoted, so the
+                # "no thanks" reply below doesn't fall back to CONTACT
+                # (BizAdvise) for a LawAdvise conversation.
+                "contact": LAW_CONTACT if LAW_CONTACT in text else CONTACT,
+            }
     except Exception as e:
         log.error(f"Text reply error for {phone}: {e}")
 
