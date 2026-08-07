@@ -1,12 +1,37 @@
 import os
 import re
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 AI_MODEL = os.getenv("AI_MODEL", "meta-llama/llama-3-8b-instruct:free")
 
 _knowledge_cache = None
 _knowledge_blocks_cache = None
+
+# ── Shared HTTP session ───────────────────────────────────────────────
+# Plain `requests.post(...)` opens a brand-new TCP + TLS connection on
+# every single call — every customer message pays a fresh handshake to
+# openrouter.ai even though we're hitting the exact same host over and
+# over. A shared Session with a pooled HTTPAdapter reuses the
+# underlying connection (HTTP keep-alive) across calls, which cuts a
+# meaningful chunk of latency off every AI reply (typically ~150-400ms
+# saved per call after the first, more on slower networks). This is
+# the single biggest easy win for "make AI replies faster" since it
+# costs nothing functionally and touches no business logic.
+_session = requests.Session()
+_adapter = HTTPAdapter(
+    pool_connections=10,
+    pool_maxsize=10,
+    max_retries=Retry(
+        total=0,  # we already do our own retry loop in ask_ai; don't double up
+        connect=1,  # but do retry a bare connection failure once, cheaply
+        backoff_factor=0.1,
+    ),
+)
+_session.mount("https://", _adapter)
+_session.mount("http://", _adapter)
 
 
 def load_knowledge():
@@ -181,7 +206,7 @@ KNOWLEDGE BASE:
 
     for attempt in range(retries + 1):
         try:
-            res = requests.post(
+            res = _session.post(
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers=headers,
                 json=payload,

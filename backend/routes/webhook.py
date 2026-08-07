@@ -7,12 +7,13 @@ import re
 from collections import deque
 import requests as http_requests
 import mimetypes as mt
-from datetime import datetime
+from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from flask import Blueprint, request, current_app
 
 from models.user import save_user, get_user_mode, get_user_source
 from models.message import save_message, update_message_status
+import models.consultation as consultation_model
 from models.database import get_db
 from bot.ai_client import ask_ai
 from bot.whatsapp_handler import send_text, send_main_menu, send_service_menu
@@ -465,6 +466,67 @@ def _interpret_yes_no(text: str):
         return "no"
     return None
 
+
+_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+_PART_OF_DAY = {"morning": 10, "afternoon": 14, "evening": 18, "night": 20}
+_TIME_RE = re.compile(r'(\d{1,2})(:(\d{2}))?\s*(am|pm)?', re.IGNORECASE)
+
+
+def _parse_best_time(text: str, now: datetime = None):
+    """Best-effort parse of the free-text 'Best Time to Call' reply into
+    a structured datetime — 'tomorrow 5pm', 'Monday morning', '3:30 pm'
+    and similar phrasings. This is a foundation for a real callback
+    calendar later, not a guarantee: on anything it can't confidently
+    read it returns None and the original free text is kept regardless,
+    so nothing is ever lost either way."""
+    if not text:
+        return None
+    now = now or datetime.now()
+    lower = text.strip().lower()
+
+    day_offset = None
+    if "today" in lower:
+        day_offset = 0
+    elif "tomorrow" in lower:
+        day_offset = 1
+    else:
+        for i, wd in enumerate(_WEEKDAYS):
+            if wd in lower or wd[:3] in lower:
+                day_offset = (i - now.weekday()) % 7 or 7
+                break
+
+    hour, minute = None, None
+    m = _TIME_RE.search(lower)
+    if m and (m.group(4) or ":" in m.group(0)):
+        hour = int(m.group(1))
+        minute = int(m.group(3) or 0)
+        ampm = m.group(4)
+        if ampm == "pm" and hour < 12:
+            hour += 12
+        elif ampm == "am" and hour == 12:
+            hour = 0
+    else:
+        for part, part_hour in _PART_OF_DAY.items():
+            if part in lower:
+                hour, minute = part_hour, 0
+                break
+
+    if hour is None:
+        if day_offset is None:
+            return None
+        hour, minute = 12, 0  # a bare day with no time given — default to noon
+
+    target_date = (now + timedelta(days=day_offset)).date() if day_offset is not None else now.date()
+    try:
+        target = datetime(target_date.year, target_date.month, target_date.day, hour, minute)
+    except ValueError:
+        return None
+
+    if day_offset is None and target < now:
+        target += timedelta(days=1)
+
+    return target.strftime("%Y-%m-%dT%H:%M:%SZ")
+
 TEXT_MAIN_MENU_1 = """Welcome to *BizAdvise & LawAdvise Consulting* ⚖️🏢
 
 How can we assist you? Please reply with a number:
@@ -566,6 +628,45 @@ TEXT_SERVICE_MENUS_LAW = {
     "9": ("Corporate Law", "corporate_law"),
     "10": ("Talk to an Expert", "contact_us"),
 }
+
+# ── Service labels for consultation records ──────────────────────────────
+# Built from the same TEXT_SERVICE_MENUS map staff already see on the
+# combined menu, so the label shown on a booked consultation always
+# matches the label the customer themselves picked from — no separate
+# list to keep in sync by hand.
+_BIZ_SERVICE_IDS = {
+    "biz_business", "biz_ngo", "biz_tax", "biz_accounts", "biz_legal",
+    "biz_digital", "biz_urgent", "biz_consult",
+}
+SERVICE_LABELS = {service_id: title for title, service_id in TEXT_SERVICE_MENUS.values()}
+
+# Leaf "...consult" ids only ever appear as a tapped button_id (never as
+# a _user_service_context value), so they're not in TEXT_SERVICE_MENUS —
+# alias each one back to its parent service for a consistent label.
+_LEAF_SERVICE_ALIAS = {
+    "nikah_consult": "online_nikah",
+    "court_consult": "court_marriage",
+    "divorce_consult": "divorce_khula",
+    "custody_consult": "child_custody",
+    "maintenance_consult": "maintenance",
+    "property_consult": "property_law",
+    "inheritance_consult": "inheritance",
+    "corporate_consult": "corporate_law",
+    "docs_consult": "legal_docs",
+}
+for _leaf_id, _parent_id in _LEAF_SERVICE_ALIAS.items():
+    SERVICE_LABELS[_leaf_id] = SERVICE_LABELS.get(_parent_id, _leaf_id)
+
+
+def _service_brand(service_id: str) -> str:
+    if not service_id:
+        return ""
+    canonical = _LEAF_SERVICE_ALIAS.get(service_id, service_id)
+    if canonical in _BIZ_SERVICE_IDS:
+        return "biz"
+    if canonical == "contact_us":
+        return ""
+    return "law"
 
 
 def _service_menu_map(source: str) -> dict:
@@ -852,7 +953,7 @@ def _handle_message(msg, socketio, name=""):
             selection = _extract_menu_selection(text)
             response = ALL_SUB_RESPONSES.get(service, {}).get(selection) if selection else None
             if response:
-                _executor.submit(_send_text_reply, phone, response, socketio)
+                _executor.submit(_send_text_reply, phone, response, socketio, service)
                 del _user_service_context[phone]
                 return
             # Didn't match this submenu — the user went off-script (asked
@@ -880,7 +981,7 @@ def _handle_message(msg, socketio, name=""):
             elif service_id in BIZ_DIRECT_IDS:
                 response = BUTTON_RESPONSES.get(service_id, "")
                 if response:
-                    _executor.submit(_send_text_reply, phone, response, socketio)
+                    _executor.submit(_send_text_reply, phone, response, socketio, service_id)
             return
 
         mode = get_user_mode(phone)
@@ -901,7 +1002,7 @@ def _handle_message(msg, socketio, name=""):
             if selected_id in BIZ_DIRECT_IDS:
                 response = BUTTON_RESPONSES.get(selected_id, "")
                 if response:
-                    _executor.submit(_send_text_reply, phone, response, socketio)
+                    _executor.submit(_send_text_reply, phone, response, socketio, selected_id)
             elif selected_id in SERVICE_MENU_IDS:
                 _user_service_context[phone] = selected_id
                 _executor.submit(_send_service_menu_safe, phone, selected_id, socketio)
@@ -917,7 +1018,7 @@ def _handle_message(msg, socketio, name=""):
                 return
             response = BUTTON_RESPONSES.get(button_id)
             if response:
-                _executor.submit(_send_text_reply, phone, response, socketio)
+                _executor.submit(_send_text_reply, phone, response, socketio, button_id)
             else:
                 mode = get_user_mode(phone)
                 if mode == 0:
@@ -1029,6 +1130,8 @@ def _handle_contact_collection(phone, text, socketio):
         mobile = state.get("mobile", "")
         best_time = text
         reply_contact = state.get("contact", CONTACT)
+        consultation_id = state.get("consultation_id")
+        service_label = state.get("service_label", "")
         del _contact_collection[phone]
         confirmation = (
             f"✅ *Thank you, {name}!*\n\n"
@@ -1037,12 +1140,27 @@ def _handle_contact_collection(phone, text, socketio):
         )
         _executor.submit(_send_text_reply, phone, confirmation, socketio)
         _user_context[phone] = "main"
+
+        scheduled_at = _parse_best_time(best_time)
+        if consultation_id:
+            consultation_model.mark_booked(consultation_id, name, mobile, best_time, scheduled_at)
+        else:
+            # Shouldn't normally happen (the lead is created the moment
+            # the booking flow starts) — but never drop a completed
+            # booking just because that earlier step failed somehow.
+            new_id = consultation_model.create_lead(phone, "", service_label, "")
+            consultation_model.mark_booked(new_id, name, mobile, best_time, scheduled_at)
+            consultation_id = new_id
+
         # Emit consultation booked event for dashboard notification
         socketio.emit("consultation_booked", {
+            "id": consultation_id,
             "phone": phone,
             "name": name,
             "mobile": mobile,
             "best_time": best_time,
+            "scheduled_at": scheduled_at,
+            "service_label": service_label,
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         })
         log.info(f"Consultation booked: {name} ({mobile}) — best time: {best_time}")
@@ -1102,7 +1220,14 @@ def _send_service_menu_safe(phone, service_id, socketio):
         log.error(f"Service menu error for {phone}: {e}")
 
 
-def _send_text_reply(phone, text, socketio):
+def _send_text_reply(phone, text, socketio, service_id=None):
+    """service_id: whichever service menu (e.g. 'divorce_khula',
+    'biz_tax') the customer was actually looking at when this reply was
+    sent — passed through explicitly by every call site that knows it,
+    since by the time a background thread gets around to running this,
+    _user_service_context[phone] may already have been cleared for the
+    next message. Only matters for the two branches below that kick off
+    a consultation lead; ignored otherwise."""
     try:
         success, wa_id = send_text(phone, text)
         save_message(phone, text, "bot", socketio,
@@ -1110,6 +1235,8 @@ def _send_text_reply(phone, text, socketio):
                      whatsapp_message_id=wa_id, source="ai")
         if not success:
             return
+        service_label = SERVICE_LABELS.get(service_id, "")
+        brand = _service_brand(service_id)
         # "Book Consultation" paths — explicit booking intent, go
         # straight into the Name -> Mobile -> Best Time collection flow.
         if text in CONSULT_TRIGGER_TEXTS:
@@ -1117,19 +1244,28 @@ def _send_text_reply(phone, text, socketio):
             # "Book Consultation" replies (court/divorce/property/docs) —
             # there's no BizAdvise path through here, so LAW_CONTACT is
             # correct unconditionally rather than falling back to CONTACT.
-            _contact_collection[phone] = {"step": "awaiting_name", "contact": LAW_CONTACT}
+            lead_id = consultation_model.create_lead(phone, service_id or "", service_label, brand or "law")
+            _contact_collection[phone] = {
+                "step": "awaiting_name",
+                "contact": LAW_CONTACT,
+                "consultation_id": lead_id,
+                "service_label": service_label,
+            }
         # "Talk to Expert" / "Talk to Lawyer" paths — more ambiguous
         # intent, so ask first whether they even want a callback before
         # collecting any contact info. Matched by marker phrase rather
         # than exact text, so it doesn't silently break if the wording
         # of any individual prompt changes later.
         elif _is_consult_choice_prompt(text):
+            lead_id = consultation_model.create_lead(phone, service_id or "", service_label, brand)
             _contact_collection[phone] = {
                 "step": "awaiting_callback_choice",
                 # Remembers which brand's number was just quoted, so the
                 # "no thanks" reply below doesn't fall back to CONTACT
                 # (BizAdvise) for a LawAdvise conversation.
                 "contact": LAW_CONTACT if LAW_CONTACT in text else CONTACT,
+                "consultation_id": lead_id,
+                "service_label": service_label,
             }
     except Exception as e:
         log.error(f"Text reply error for {phone}: {e}")

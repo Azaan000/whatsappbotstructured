@@ -128,6 +128,34 @@ def init_db():
         )
     """)
 
+    # A row is created the moment someone is asked to book/talk to an
+    # expert (stage='requested') — capturing the service they were
+    # looking at right then, while it's still known — and is upgraded
+    # to stage='booked' once they finish the Name/Mobile/Time flow.
+    # Rows that never reach 'booked' are abandoned leads: kept (not
+    # deleted) so the requested->booked->completed funnel reflects real
+    # drop-off instead of only ever seeing the consultations that made
+    # it all the way through.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS consultations (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            phone         TEXT NOT NULL,
+            name          TEXT DEFAULT '',
+            mobile        TEXT DEFAULT '',
+            best_time     TEXT DEFAULT '',
+            scheduled_at  TEXT DEFAULT '',
+            service_id    TEXT DEFAULT '',
+            service_label TEXT DEFAULT '',
+            brand         TEXT DEFAULT '',
+            stage         TEXT DEFAULT 'requested',
+            status        TEXT DEFAULT 'new',
+            assigned_to   INTEGER,
+            created_at    TEXT,
+            updated_at    TEXT,
+            FOREIGN KEY (assigned_to) REFERENCES dashboard_users (id)
+        )
+    """)
+
     # Indexes for fast lookups
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_messages_phone
@@ -148,6 +176,22 @@ def init_db():
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_dashboard_users_username
         ON dashboard_users (username)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_consultations_phone
+        ON consultations (phone)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_consultations_stage_status
+        ON consultations (stage, status)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_consultations_assigned
+        ON consultations (assigned_to)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_consultations_created
+        ON consultations (created_at DESC)
     """)
 
     conn.commit()

@@ -1,12 +1,22 @@
-import React, { useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { api } from "../api/client";
 import s from "../styles/Modal.module.css";
 import a from "../styles/Analytics.module.css";
 
 export default function AnalyticsModal({ stats, onClose }) {
   const modalRef = useRef(null);
+  const [funnel, setFunnel] = useState([]);
+  const [funnelLoading, setFunnelLoading] = useState(true);
   const handleOverlay = (e) => { if (!modalRef.current?.contains(e.target)) onClose(); };
 
   const maxActivity = Math.max(...(stats.daily_activity || []).map((d) => d.messages), 1);
+
+  useEffect(() => {
+    api.getConsultationFunnel()
+      .then(setFunnel)
+      .catch(() => setFunnel([]))
+      .finally(() => setFunnelLoading(false));
+  }, []);
 
   return (
     <div className={s.overlay} onMouseDown={handleOverlay}>
@@ -54,6 +64,39 @@ export default function AnalyticsModal({ stats, onClose }) {
               ))}
             </div>
           </div>
+
+          {!funnelLoading && funnel.length > 0 && (
+            <div className={a.section}>
+              <h3>Consultation funnel by service</h3>
+              <div className={a.funnelHeader}>
+                <span className={a.funnelService}>Service</span>
+                <span>Requested</span>
+                <span>Booked</span>
+                <span>Completed</span>
+              </div>
+              {funnel.map((row) => {
+                const bookedPct = row.requested ? Math.round((row.booked / row.requested) * 100) : 0;
+                const completedPct = row.requested ? Math.round((row.completed / row.requested) * 100) : 0;
+                return (
+                  <div key={`${row.brand}-${row.service_label}`} className={a.funnelRow}>
+                    <div className={a.funnelTop}>
+                      <span className={a.funnelService}>
+                        {row.service_label}
+                        {row.brand && <span className={a.funnelBrand}>{row.brand === "biz" ? "BizAdvise" : "LawAdvise"}</span>}
+                      </span>
+                      <span className={a.funnelNum}>{row.requested} requested</span>
+                      <span className={a.funnelNum}>{row.booked} booked ({bookedPct}%)</span>
+                      <span className={a.funnelNum}>{row.completed} completed ({completedPct}%)</span>
+                    </div>
+                    <div className={a.funnelTrack}>
+                      <div className={a.funnelFillBooked} style={{ width: `${bookedPct}%` }} />
+                      <div className={a.funnelFillCompleted} style={{ width: `${completedPct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {stats.daily_activity?.length > 0 && (
             <div className={a.section}>

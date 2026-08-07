@@ -1,7 +1,8 @@
 import time
 from datetime import datetime
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 from models.database import get_db
+from models import consultation as consultation_model
 from utils.auth import require_auth
 
 analytics_bp = Blueprint("analytics", __name__)
@@ -9,17 +10,6 @@ analytics_bp = Blueprint("analytics", __name__)
 _analytics_cache = {}
 _cache_time = 0
 CACHE_TTL = 30
-
-# Keywords that indicate a consultation request
-CONSULTATION_KEYWORDS = [
-    "consult", "book", "appointment", "talk to", "speak to",
-    "contact", "lawyer", "legal expert", "schedule", "call me",
-    "reach out", "get in touch", "nikah_consult", "court_consult",
-    "divorce_consult", "custody_consult", "maintenance_consult",
-    "property_consult", "inheritance_consult", "corporate_consult",
-    "docs_consult", "contact_us", "book consultation",
-    "talk to a lawyer", "talk to expert", "book a consultation"
-]
 
 
 @analytics_bp.route("/analytics", methods=["GET"])
@@ -121,53 +111,70 @@ def get_analytics():
 @analytics_bp.route("/consultations", methods=["GET"])
 @require_auth
 def get_consultations():
-    """Return list of users who requested a consultation."""
-    conn = get_db()
-    c = conn.cursor()
+    """Return the consultation queue, filterable via query params:
+    stage ('booked' default | 'requested' | 'all'), status, service_id,
+    brand, assigned_to (dashboard_user id, or 'me', or 'unassigned'),
+    search, date_from, date_to, sort (e.g. '-created_at', 'name')."""
     try:
-        # Build SQL LIKE conditions for each keyword
-        conditions = " OR ".join(
-            ["LOWER(m.message) LIKE ?"] * len(CONSULTATION_KEYWORDS)
+        assigned_to = request.args.get("assigned_to")
+        unassigned_only = assigned_to == "unassigned"
+        if assigned_to == "me":
+            assigned_to = getattr(request, "dashboard_user_id", None)
+        elif assigned_to not in (None, "unassigned"):
+            try:
+                assigned_to = int(assigned_to)
+            except ValueError:
+                assigned_to = None
+
+        rows = consultation_model.list_consultations(
+            stage=request.args.get("stage", "booked"),
+            status=request.args.get("status"),
+            service_id=request.args.get("service_id"),
+            brand=request.args.get("brand"),
+            assigned_to=None if unassigned_only else assigned_to,
+            unassigned_only=unassigned_only,
+            search=request.args.get("search"),
+            date_from=request.args.get("date_from"),
+            date_to=request.args.get("date_to"),
+            sort=request.args.get("sort", "-created_at"),
         )
-        params = [f"%{kw}%" for kw in CONSULTATION_KEYWORDS]
-
-        c.execute(f"""
-            SELECT
-                u.phone,
-                u.name,
-                u.last_seen,
-                u.tags,
-                COUNT(DISTINCT m.id) as consult_count,
-                MAX(m.timestamp) as last_request,
-                (SELECT message FROM messages
-                 WHERE phone = u.phone
-                 AND ({conditions})
-                 ORDER BY id DESC LIMIT 1) as last_consult_message
-            FROM users u
-            JOIN messages m ON m.phone = u.phone
-            WHERE m.direction = 'user'
-            AND ({conditions})
-            GROUP BY u.phone
-            ORDER BY last_request DESC
-        """, params + params)
-
-        rows = c.fetchall()
-        return jsonify([
-            {
-                "phone": r[0],
-                "name": r[1] or "",
-                "last_seen": r[2],
-                "tags": r[3] or "",
-                "consult_count": r[4],
-                "last_request": r[5],
-                "last_consult_message": r[6] or "",
-            }
-            for r in rows
-        ])
+        return jsonify(rows)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    finally:
-        conn.close()
+
+
+@analytics_bp.route("/consultations/<int:consultation_id>", methods=["PATCH"])
+@require_auth
+def patch_consultation(consultation_id):
+    """Update a consultation's status, assignment, and/or scheduled time.
+    Body may include any subset of: status, assigned_to (dashboard_user
+    id or null to unassign), scheduled_at (ISO datetime string)."""
+    data = request.get_json(silent=True) or {}
+
+    kwargs = {}
+    if "status" in data:
+        kwargs["status"] = data["status"]
+    if "assigned_to" in data:
+        kwargs["assigned_to"] = data["assigned_to"]
+    if "scheduled_at" in data:
+        kwargs["scheduled_at"] = data["scheduled_at"] or ""
+
+    success, error = consultation_model.update_consultation(consultation_id, **kwargs)
+    if not success:
+        status_code = 404 if error == "Consultation not found" else 400
+        return jsonify({"error": error}), status_code
+
+    return jsonify(consultation_model.get_consultation(consultation_id))
+
+
+@analytics_bp.route("/consultations/funnel", methods=["GET"])
+@require_auth
+def get_consultation_funnel():
+    """Per-service requested -> booked -> completed conversion counts."""
+    try:
+        return jsonify(consultation_model.funnel_stats(brand=request.args.get("brand")))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @analytics_bp.route("/reload-knowledge", methods=["POST"])

@@ -2,6 +2,8 @@ import os
 import time
 import mimetypes
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
@@ -10,6 +12,25 @@ MEDIA_FOLDER = "media_files"
 
 # Shared socketio reference set by app.py after init
 _socketio = None
+
+# ── Shared HTTP session ───────────────────────────────────────────────
+# Every send_text / send_main_menu / send_service_menu / send_media call
+# used to call the bare `requests.post(...)` function, which opens a
+# fresh TCP + TLS connection to graph.facebook.com from scratch every
+# single time. Since every incoming customer message results in at
+# least one outgoing call here, that's a brand-new handshake on every
+# reply. A shared Session with a pooled HTTPAdapter reuses the
+# connection (HTTP keep-alive) across calls instead, which noticeably
+# cuts the time it takes for a reply to actually reach WhatsApp.
+_session = requests.Session()
+_adapter = HTTPAdapter(
+    pool_connections=10,
+    pool_maxsize=10,
+    max_retries=Retry(total=0, connect=1, backoff_factor=0.1),
+)
+_session.mount("https://", _adapter)
+_session.mount("http://", _adapter)
+
 
 def set_socketio(sio):
     global _socketio
@@ -53,7 +74,7 @@ def send_text(to: str, message: str):
             "type": "text",
             "text": {"body": message},
         }
-        res = requests.post(
+        res = _session.post(
             f"{WA_BASE}/{PHONE_NUMBER_ID}/messages",
             headers=_headers(), json=payload, timeout=10,
         )
@@ -126,7 +147,7 @@ def send_main_menu(to: str, source: str = None):
                 }
             }
         }
-        res = requests.post(
+        res = _session.post(
             f"{WA_BASE}/{PHONE_NUMBER_ID}/messages",
             headers=_headers(), json=payload, timeout=10,
         )
@@ -172,7 +193,7 @@ def send_service_menu(to: str, service_id: str):
                 }
             }
         }
-        res = requests.post(
+        res = _session.post(
             f"{WA_BASE}/{PHONE_NUMBER_ID}/messages",
             headers=_headers(), json=payload, timeout=10,
         )
@@ -201,7 +222,7 @@ def send_media(to: str, file_path: str, media_type: str, caption: str = ""):
             "type": media_type,
             media_type: media_payload,
         }
-        res = requests.post(
+        res = _session.post(
             f"{WA_BASE}/{PHONE_NUMBER_ID}/messages",
             headers=_headers(), json=payload, timeout=30,
         )
@@ -224,7 +245,7 @@ def _upload_media(file_path: str, media_type: str):
                 "video": "video/mp4",
             }.get(media_type, "application/octet-stream")
         with open(file_path, "rb") as f:
-            res = requests.post(
+            res = _session.post(
                 f"{WA_BASE}/{PHONE_NUMBER_ID}/media",
                 headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"},
                 files={"file": (os.path.basename(file_path), f, mime_type)},

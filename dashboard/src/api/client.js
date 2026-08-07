@@ -163,7 +163,22 @@ export const api = {
 
   getAnalytics: () => request("/analytics"),
 
-  getConsultations: () => request("/consultations"),
+  getConsultations: (filters = {}) => {
+    const params = new URLSearchParams(
+      Object.entries(filters).filter(([, v]) => v !== undefined && v !== null && v !== "")
+    );
+    const qs = params.toString();
+    return request(`/consultations${qs ? `?${qs}` : ""}`);
+  },
+
+  updateConsultation: (id, patch) =>
+    request(`/consultations/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+
+  getConsultationFunnel: (brand = "") =>
+    request(`/consultations/funnel${brand ? `?brand=${encodeURIComponent(brand)}` : ""}`),
 
   exportCsv: (phone = null) => {
     const params = new URLSearchParams({ token: authToken() });

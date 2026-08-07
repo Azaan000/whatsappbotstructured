@@ -36,19 +36,14 @@
   display: flex; align-items: center; justify-content: center;
 }
 
-.cardBody { flex: 1; min-width: 0; cursor: pointer; }
+.cardBody { flex: 1; min-width: 0; }
 .nameRow { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
-.name { font-size: 14px; font-weight: 600; color: #333; }
+.name { font-size: 14px; font-weight: 600; color: #333; cursor: pointer; }
+.name:hover { text-decoration: underline; }
 .phone { font-size: 11px; color: #999; }
 .tag { background: var(--color-gold-soft, #fff3e6); color: var(--color-navy, #03244f); padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; }
 
-.lastMsg {
-  font-size: 12px; color: #555; margin-bottom: 6px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  font-style: italic;
-}
-
-.meta { display: flex; gap: 14px; font-size: 11px; color: #888; }
+.meta { display: flex; gap: 14px; font-size: 11px; color: #888; flex-wrap: wrap; }
 
 .cardRight { flex-shrink: 0; display: flex; flex-direction: column; gap: 6px; }
 
@@ -66,3 +61,70 @@
   font-size: 11px; font-weight: 600; white-space: nowrap;
 }
 .deleteBtn:hover { background: #f44336; color: #fff; }
+
+/* ── Filter bar ──────────────────────────────────────────────────── */
+.filterBar {
+  padding: 14px 20px; border-bottom: 1px solid var(--color-border-tertiary);
+  display: flex; flex-direction: column; gap: 10px; flex-shrink: 0;
+}
+.searchInput {
+  width: 100%; padding: 9px 12px; border: 1px solid #ddd; border-radius: 8px;
+  font-size: 13px; box-sizing: border-box; outline: none;
+}
+.searchInput:focus { border-color: var(--color-gold, #ea963e); }
+
+.filterRow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+.filterSelect, .dateInput {
+  padding: 7px 10px; border: 1px solid #ddd; border-radius: 8px;
+  font-size: 12px; background: #fff; color: #333; outline: none;
+}
+.filterSelect:focus, .dateInput:focus { border-color: var(--color-gold, #ea963e); }
+
+.clearBtn {
+  padding: 7px 12px; background: none; border: 1px dashed #bbb; border-radius: 8px;
+  font-size: 12px; color: #777; cursor: pointer;
+}
+.clearBtn:hover { color: #f44336; border-color: #f44336; }
+
+.segmented {
+  display: flex; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;
+}
+.segmentBtn {
+  padding: 7px 12px; background: #fff; border: none; cursor: pointer;
+  font-size: 12px; color: #666; border-right: 1px solid #ddd;
+}
+.segmentBtn:last-child { border-right: none; }
+.segmentBtnActive { background: var(--color-navy, #03244f); color: #fff; }
+
+/* ── Stale + service tags ────────────────────────────────────────── */
+.stale { border-color: #ffb74d; background: #fff8ee; }
+.staleBadge {
+  background: #fff3e0; color: #e65100; padding: 2px 8px; border-radius: 10px;
+  font-size: 10px; font-weight: 700;
+}
+.tagMuted {
+  background: #f0f0f0; color: #888; padding: 2px 8px; border-radius: 10px;
+  font-size: 10px; font-weight: 600;
+}
+.tagBiz { background: #e3f2fd; color: #0b5cff; }
+.tagLaw { background: #ede7f6; color: #5e35b1; }
+
+.details { display: flex; gap: 14px; font-size: 12px; color: #555; margin-bottom: 6px; }
+.detailsMuted { font-style: italic; color: #999; }
+
+/* ── Per-card status/assign/schedule controls ────────────────────── */
+.controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+
+.statusSelect, .assignSelect, .scheduleInput {
+  padding: 5px 8px; border-radius: 7px; font-size: 11px; font-weight: 600;
+  border: 1px solid #ddd; outline: none; cursor: pointer; background: #fff;
+}
+.scheduleInput { font-weight: 400; color: #555; cursor: text; }
+.assignSelect { font-weight: 500; color: #444; }
+
+.status_new      { background: #e3f2fd; color: #0b5cff; border-color: #bbdefb; }
+.status_contacted { background: #fff3e0; color: #e65100; border-color: #ffe0b2; }
+.status_scheduled { background: #ede7f6; color: #5e35b1; border-color: #d1c4e9; }
+.status_completed { background: #e8f5e9; color: #2e7d32; border-color: #c8e6c9; }
+.status_no_show   { background: #fbe9e7; color: #d32f2f; border-color: #ffccbc; }

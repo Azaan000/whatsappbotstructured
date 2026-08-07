@@ -28,3 +28,22 @@
 .qItem { padding: 10px 12px; background: #fff; border-radius: 8px; margin-bottom: 6px; }
 .qText { font-size: 13px; color: #333; margin-bottom: 4px; }
 .qCount { font-size: 11px; color: #0b5cff; }
+
+/* ── Consultation funnel ─────────────────────────────────────────── */
+.funnelHeader {
+  display: none;
+}
+.funnelRow { padding: 10px 12px; background: #fff; border-radius: 8px; margin-bottom: 8px; }
+.funnelTop { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; margin-bottom: 6px; }
+.funnelService { font-size: 13px; font-weight: 600; color: #333; flex: 1 0 100%; }
+.funnelBrand {
+  margin-left: 8px; font-size: 10px; font-weight: 600; color: #888;
+  background: #f0f0f0; padding: 1px 7px; border-radius: 8px;
+}
+.funnelNum { font-size: 11px; color: #666; }
+.funnelTrack {
+  height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden;
+  position: relative; display: flex;
+}
+.funnelFillBooked { height: 100%; background: #90a4d4; position: absolute; left: 0; top: 0; transition: width 0.3s; }
+.funnelFillCompleted { height: 100%; background: #4caf50; position: absolute; left: 0; top: 0; transition: width 0.3s; z-index: 1; }
