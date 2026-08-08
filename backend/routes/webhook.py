@@ -691,7 +691,7 @@ def _service_menu_map(source: str) -> dict:
 
 
 MENU_TRIGGERS = {"menu", "options", "start", "help", "main menu", "مینو", "آپشنز", "info", "information", "details", "services"}
-GREETING_WORDS = {"hi", "hello", "hey", "helo", "hii", "salam", "assalam", "السلام", "assalamualaikum", "aoa", "salam alaikum","assalam alaikum","whats up",""}
+GREETING_WORDS = {"hi", "hello", "hey", "helo", "hii", "salam", "assalam", "السلام", "assalamualaikum", "aoa", "salam alaikum","assalam alaikum","whats up","asslam","salam alaikum", "aasslam o alaikum"}
 
 # Typed specifically to jump straight to one brand's menu, same idea as
 # MENU_TRIGGERS but scoped instead of combined.
