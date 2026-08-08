@@ -702,19 +702,62 @@ MENU_TRIGGERS = {
     "شروع", "شروع کریں", "فہرست",
 }
 
-GREETING_WORDS = {
-    "hi", "hello", "hey", "helo", "hii", "hiya", "yo", "good morning",
-    "good afternoon", "good evening", "morning", "evening",
-    "salam", "salaam", "assalam", "assalamualaikum", "assalamu alaikum",
-    "assalam o alaikum", "assalam mu alaikum", "asslam", "asslam o alaikum",
-    "aasslam o alaikum", "aoa", "a.o.a", "salam alaikum",
-    "walaikum", "walaikum salam", "walykum", "walaikum assalam",
-    "salamun alaikum", "assalam alaikum", "as salam alaikum",
-    "assalamoalaikum", "assalamo alaikum","asslam mu alaikum"
-    "السلام علیکم", "السلام", "سلام", "وعلیکم السلام", "وعلیکم",
-    "hi there", "hello there", "hey there", "whats up", "what's up",
-    "wassup", "sup","asslam"
-}
+# ── Greeting detection ────────────────────────────────────────────────────
+# Pattern-based instead of an exact-match word list — Salam alone has
+# dozens of phonetic Roman-Urdu spellings ("asslam mu alaikum",
+# "assalam o alaikum", "asalamualaikum", ...) and an exact-match set will
+# always miss some, silently falling through to the AI instead of the
+# GREETING_REPLY template. This matches the "core" letter pattern of
+# salam (tolerant of doubled/dropped s's and a's — the actual source of
+# most real typos, incl. the "asslam" one from testing) plus an optional
+# alaikum suffix, joined or spaced, so new misspellings are caught
+# without further code changes.
+#
+# Trade-off: "Aslam" is also a common Pakistani given name, so a message
+# that's just someone's name (or mentions one) can register as a
+# greeting. Low-severity if it happens — worst case is the short
+# GREETING_REPLY goes out instead of an AI reply — so this is accepted
+# rather than trying to special-case names, which isn't reliably
+# possible from text alone.
+_SALAM_RE = re.compile(
+    r'\b'
+    r'a{0,2}s{1,2}a{0,2}l{1,2}a{1,2}m'   # salam / salaam / assalam / asalam / asslam / aslam
+    r'(?:u|un|o)?'                        # assalamu / assalamun / assalamo
+    r'(?:'
+        r'\s*[-]?\s*(?:mu|wa)?\s*'         # optional filler: mu / wa / spacing/hyphen
+        r'al[ae]i?[ky]um'                  # alaikum / alaykum / aleikum / aleykum
+    r')?'
+    r'\b',
+    re.IGNORECASE,
+)
+# Catches the reply form typed alone, e.g. just "walaikum" or "alaikum"
+# with no salam root before it.
+_ALAIKUM_ONLY_RE = re.compile(r'\bw?al[ae]i?[ky]um\b', re.IGNORECASE)
+_SALAM_UR = ("السلام", "سلام", "وعلیکم")
+_ENGLISH_GREETINGS_RE = re.compile(
+    r'^(hi+|hello+|hey+|helo+|yo|sup|wassup|what\'?s up|'
+    r'good\s?(morning|afternoon|evening))\b',
+    re.IGNORECASE,
+)
+
+
+def _is_greeting(text: str) -> bool:
+    """Pattern-based greeting detection — catches phonetic/typo variants
+    of Salam and common English greetings without needing an exhaustive
+    exact-match word list. Restricted to short messages so it doesn't
+    fire on an unrelated sentence that happens to contain a greeting-like
+    word."""
+    stripped = (text or "").strip()
+    if not stripped:
+        return False
+    if any(marker in stripped for marker in _SALAM_UR):
+        return True
+    if len(stripped) <= 40 and (_SALAM_RE.search(stripped) or _ALAIKUM_ONLY_RE.search(stripped)):
+        return True
+    if _ENGLISH_GREETINGS_RE.match(stripped):
+        return True
+    return False
+
 
 # Typed specifically to jump straight to one brand's menu, same idea as
 # MENU_TRIGGERS but scoped instead of combined.
@@ -993,7 +1036,7 @@ def _handle_message(msg, socketio, name=""):
                 _executor.submit(_send_welcome_menu, phone, socketio, "law")
                 return
 
-            if text_lower in GREETING_WORDS:
+            if _is_greeting(text):
                 # Plain "hi"/"salam"/etc. with no ad and no direct brand
                 # request — greet them and let them pick, same short reply
                 # a returning contact gets, instead of dumping the full menu.
@@ -1036,7 +1079,7 @@ def _handle_message(msg, socketio, name=""):
             _executor.submit(_send_welcome_menu, phone, socketio, "law")
             return
 
-        if text_lower in GREETING_WORDS:
+        if _is_greeting(text):
             # Returning contact greeting again (any time later) — short
             # reply pointing them to bizservices/lawservices/menu, instead
             # of routing to the AI.
