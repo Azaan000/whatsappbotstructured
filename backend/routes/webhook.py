@@ -713,7 +713,7 @@ GREETING_WORDS = {
     "assalamoalaikum", "assalamo alaikum","asslam mu alaikum"
     "السلام علیکم", "السلام", "سلام", "وعلیکم السلام", "وعلیکم",
     "hi there", "hello there", "hey there", "whats up", "what's up",
-    "wassup", "sup",
+    "wassup", "sup","asslam"
 }
 
 # Typed specifically to jump straight to one brand's menu, same idea as
