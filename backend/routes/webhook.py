@@ -693,6 +693,23 @@ def _service_menu_map(source: str) -> dict:
 MENU_TRIGGERS = {"menu", "options", "start", "help", "main menu", "مینو", "آپشنز", "info", "information", "details", "services"}
 GREETING_WORDS = {"hi", "hello", "hey", "helo", "hii", "salam", "assalam", "السلام", "assalamualaikum", "aoa"}
 
+# Typed specifically to jump straight to one brand's menu, same idea as
+# MENU_TRIGGERS but scoped instead of combined.
+BIZ_MENU_TRIGGERS = {"bizservices", "biz services", "bizservice"}
+LAW_MENU_TRIGGERS = {"lawservices", "law services", "lawservice"}
+
+# Sent to ANY plain greeting that isn't ad-sourced and isn't a direct
+# bizservices/lawservices request — whether it's a brand-new contact's
+# very first message or a returning contact saying hi again later.
+# Lets the person decide for themselves instead of being pushed straight
+# into a specific brand's menu.
+GREETING_REPLY = (
+    "👋 *Assalam-o-Alaikum! Welcome to BizAdvise & LawAdvise Consulting.*\n\n"
+    "How can we help you today?\n\n"
+    "Type *bizservices* for Business services, *lawservices* for Legal "
+    "services, or *menu* to see everything."
+)
+
 
 def _get_socketio():
     return current_app.extensions["socketio"]
@@ -934,6 +951,36 @@ def _handle_message(msg, socketio, name=""):
         if is_new:
             _user_service_context.pop(phone, None)
             _contact_collection.pop(phone, None)
+
+            if ad_source:
+                # Came in via a Click-to-WhatsApp ad for a specific brand —
+                # that's an explicit signal, so go straight to that brand's
+                # menu rather than making them ask for it.
+                _user_menu_view[phone] = source
+                _executor.submit(_send_welcome_menu, phone, socketio, source)
+                return
+
+            if text_lower in BIZ_MENU_TRIGGERS:
+                _user_menu_view[phone] = "biz"
+                _executor.submit(_send_welcome_menu, phone, socketio, "biz")
+                return
+
+            if text_lower in LAW_MENU_TRIGGERS:
+                _user_menu_view[phone] = "law"
+                _executor.submit(_send_welcome_menu, phone, socketio, "law")
+                return
+
+            if text_lower in GREETING_WORDS:
+                # Plain "hi"/"salam"/etc. with no ad and no direct brand
+                # request — greet them and let them pick, same short reply
+                # a returning contact gets, instead of dumping the full menu.
+                _user_menu_view[phone] = None
+                _executor.submit(_send_text_reply, phone, GREETING_REPLY, socketio)
+                return
+
+            # Anything else from a brand-new contact (an explicit "menu",
+            # or free text that isn't a greeting/trigger) — fall back to
+            # the original behavior and show the combined/brand menu.
             _user_menu_view[phone] = source
             _executor.submit(_send_welcome_menu, phone, socketio, source)
             return
@@ -952,10 +999,27 @@ def _handle_message(msg, socketio, name=""):
             _executor.submit(_send_welcome_menu, phone, socketio, None)
             return
 
+        if text_lower in BIZ_MENU_TRIGGERS:
+            _user_service_context.pop(phone, None)
+            _contact_collection.pop(phone, None)
+            _user_menu_view[phone] = "biz"
+            _executor.submit(_send_welcome_menu, phone, socketio, "biz")
+            return
+
+        if text_lower in LAW_MENU_TRIGGERS:
+            _user_service_context.pop(phone, None)
+            _contact_collection.pop(phone, None)
+            _user_menu_view[phone] = "law"
+            _executor.submit(_send_welcome_menu, phone, socketio, "law")
+            return
+
         if text_lower in GREETING_WORDS:
+            # Returning contact greeting again (any time later) — short
+            # reply pointing them to bizservices/lawservices/menu, instead
+            # of routing to the AI.
             mode = get_user_mode(phone)
             if mode == 0:
-                _executor.submit(_process_ai_reply, phone, text, socketio)
+                _executor.submit(_send_text_reply, phone, GREETING_REPLY, socketio)
             return
 
         if phone in _user_service_context:
