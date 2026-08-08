@@ -690,8 +690,31 @@ def _service_menu_map(source: str) -> dict:
     return TEXT_SERVICE_MENUS
 
 
-MENU_TRIGGERS = {"menu", "options", "start", "help", "main menu", "مینو", "آپشنز", "info", "information", "details", "services"}
-GREETING_WORDS = {"hi", "hello", "hey", "helo", "hii", "salam", "assalam", "السلام", "assalamualaikum", "aoa", "salam alaikum","assalam alaikum","whats up","asslam","salam alaikum", "aasslam o alaikum","Asslam mu alaikum", "walykum"}
+MENU_TRIGGERS = {
+    "menu", "options", "option", "start", "help", "main menu", "mainmenu",
+    "info", "information", "details", "services", "service", "list",
+    "list of services", "what can you do", "what do you do", "show menu",
+    "show options", "restart", "reset",
+    "menu dikhao", "options dikhao", "madad", "madat", "khidmaat",
+    "khidmat", "khidmaat dikhao", "tafseel", "tafaseel", "shuru",
+    "shuru karo",
+    "مینو", "آپشنز", "آپشن", "مدد", "خدمات", "تفصیل", "تفصیلات",
+    "شروع", "شروع کریں", "فہرست",
+}
+
+GREETING_WORDS = {
+    "hi", "hello", "hey", "helo", "hii", "hiya", "yo", "good morning",
+    "good afternoon", "good evening", "morning", "evening",
+    "salam", "salaam", "assalam", "assalamualaikum", "assalamu alaikum",
+    "assalam o alaikum", "assalam mu alaikum", "asslam", "asslam o alaikum",
+    "aasslam o alaikum", "aoa", "a.o.a", "salam alaikum",
+    "walaikum", "walaikum salam", "walykum", "walaikum assalam",
+    "salamun alaikum", "assalam alaikum", "as salam alaikum",
+    "assalamoalaikum", "assalamo alaikum","asslam mu alaikum"
+    "السلام علیکم", "السلام", "سلام", "وعلیکم السلام", "وعلیکم",
+    "hi there", "hello there", "hey there", "whats up", "what's up",
+    "wassup", "sup",
+}
 
 # Typed specifically to jump straight to one brand's menu, same idea as
 # MENU_TRIGGERS but scoped instead of combined.
