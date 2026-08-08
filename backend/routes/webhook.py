@@ -691,12 +691,12 @@ def _service_menu_map(source: str) -> dict:
 
 
 MENU_TRIGGERS = {"menu", "options", "start", "help", "main menu", "مینو", "آپشنز", "info", "information", "details", "services"}
-GREETING_WORDS = {"hi", "hello", "hey", "helo", "hii", "salam", "assalam", "السلام", "assalamualaikum", "aoa"}
+GREETING_WORDS = {"hi", "hello", "hey", "helo", "hii", "salam", "assalam", "السلام", "assalamualaikum", "aoa", "salam alaikum","assalam alaikum","whats up",""}
 
 # Typed specifically to jump straight to one brand's menu, same idea as
 # MENU_TRIGGERS but scoped instead of combined.
-BIZ_MENU_TRIGGERS = {"bizservices", "biz services", "bizservice"}
-LAW_MENU_TRIGGERS = {"lawservices", "law services", "lawservice"}
+BIZ_MENU_TRIGGERS = {"bizservices", "biz services", "bizservice", "bizadvise", "business services", "business service","biz", "business consulting"}
+LAW_MENU_TRIGGERS = {"lawservices", "law services", "lawservice", "lawadvise", "legal services", "legal service", "law", "legal consulting"}
 
 # Sent to ANY plain greeting that isn't ad-sourced and isn't a direct
 # bizservices/lawservices request — whether it's a brand-new contact's
