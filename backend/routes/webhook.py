@@ -92,14 +92,24 @@ def _detect_ad_source(msg: dict):
     keyword-matches its headline/body/source_url to decide which brand
     the ad was for. Returns 'biz', 'law', or None if there's no
     referral, or the text doesn't clearly point to one brand (e.g. it
-    mentions both, or neither)."""
+    mentions both, or neither).
+
+    Falls back to the customer's own typed text when there's no
+    referral, so someone who messages first (no ad involved) and
+    mentions e.g. "divorce" or "tax" up front gets routed to that
+    brand's menu the same way a matching ad click would — same
+    keyword lists, same ambiguous-match-means-None rule, just a
+    different source of text to scan."""
     referral = msg.get("referral") or {}
-    if not referral:
+    if referral:
+        haystack = " ".join(
+            str(referral.get(field, "")) for field in ("headline", "body", "source_url")
+        ).lower()
+    elif msg.get("type") == "text":
+        haystack = str(msg.get("text", {}).get("body", "")).lower()
+    else:
         return None
 
-    haystack = " ".join(
-        str(referral.get(field, "")) for field in ("headline", "body", "source_url")
-    ).lower()
     if not haystack.strip():
         return None
 
