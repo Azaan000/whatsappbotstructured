@@ -482,7 +482,7 @@ function Dashboard({ authUser, onLogout }) {
 
       {showBroadcast && <BroadcastModal users={users} onClose={() => setShowBroadcast(false)} />}
       {showAnalytics && <AnalyticsModal stats={stats} onClose={() => setShowAnalytics(false)} />}
-      {showConsultations && <ConsultationsModal users={users} onClose={() => setShowConsultations(false)} onSelectUser={selectUser} onUserDeleted={handleUserDeleted} latestBooking={latestBooking} />}
+      {showConsultations && <ConsultationsModal users={users} onClose={() => setShowConsultations(false)} onSelectUser={selectUser} onUserDeleted={handleUserDeleted} latestBooking={latestBooking} currentUser={authUser} />}
       {editingUser && <EditUserModal user={editingUser} onClose={() => setEditingUser(null)} onSaved={handleUserSaved} />}
       {showAccount && (
         <AccountModal

@@ -274,7 +274,7 @@ def resolve_media_type(filename: str) -> str:
 def cleanup_old_media(days: int = 30):
     """Delete media files older than `days` days. Call on a schedule."""
     if not os.path.exists(MEDIA_FOLDER):
-        return
+        return 0, 0
     cutoff = time.time() - (days * 86400)
     deleted = 0
     freed = 0
