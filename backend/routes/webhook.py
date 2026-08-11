@@ -342,7 +342,8 @@ BIZ_SUB_MENU = {
         "5️⃣ Copyright Registration\n"
         "6️⃣ Patent Registration\n"
         "7️⃣ Other Registrations (KCCI / PEC / DTS / PSEB)\n"
-        "8️⃣ Talk to an Expert"
+        "8️⃣ Talk to an Expert\n"
+        "9️⃣ 🔙 Back to Main Menu"
     ),
     "biz_tax": (
         "💰 *Taxation Services* — which service do you need?\n\n"
@@ -355,7 +356,8 @@ BIZ_SUB_MENU = {
         "7️⃣ ATL (Active Taxpayer List)\n"
         "8️⃣ Tax Notices\n"
         "9️⃣ Tax Refund\n"
-        "🔟 Talk to an Expert"
+        "🔟 Talk to an Expert\n"
+        "1️⃣1️⃣ 🔙 Back to Main Menu"
     ),
     "biz_accounts": (
         "📊 *Accountancy Services* — which service do you need?\n\n"
@@ -365,7 +367,8 @@ BIZ_SUB_MENU = {
         "4️⃣ Internal & External Audit\n"
         "5️⃣ Financial Reporting\n"
         "6️⃣ Accounting Consultation\n"
-        "7️⃣ Talk to an Expert"
+        "7️⃣ Talk to an Expert\n"
+        "8️⃣ 🔙 Back to Main Menu"
     ),
     "biz_legal": (
         "⚖️ *Corporate Legal Advisory* — which service do you need?\n\n"
@@ -376,8 +379,25 @@ BIZ_SUB_MENU = {
         "5️⃣ Regulatory Compliance\n"
         "6️⃣ Company Secretarial Services\n"
         "7️⃣ Legal Consultation\n"
-        "8️⃣ Talk to an Expert"
+        "8️⃣ Talk to an Expert\n"
+        "9️⃣ 🔙 Back to Main Menu"
     ),
+}
+
+# Which numbered choice means "back to main menu" on each of the 4
+# BizAdvise sub-menus above. Only these get a NUMBERED back option —
+# Meta's interactive "button" messages cap out at 3 buttons, so the
+# 3-option sub-menus elsewhere (Nikah, Divorce, etc., sent via
+# send_service_menu's button payload) can't take a 4th tappable button
+# without breaking that limit; they keep only the "type *menu*" text
+# hint instead. These 4, by contrast, already have more than 3 options
+# and are sent as plain numbered text (see _send_service_menu_safe's
+# fallback), where an extra numbered line costs nothing.
+_BACK_TO_MAIN_MENU_OPTION = {
+    "biz_business": "9",
+    "biz_tax": "11",
+    "biz_accounts": "8",
+    "biz_legal": "9",
 }
 
 _add_back_to_menu_hint(BIZ_SUB_MENU)
@@ -1129,6 +1149,12 @@ def _handle_message(msg, socketio, name=""):
         if phone in _user_service_context:
             service = _user_service_context[phone]
             selection = _extract_menu_selection(text)
+            if selection and selection == _BACK_TO_MAIN_MENU_OPTION.get(service):
+                del _user_service_context[phone]
+                _contact_collection.pop(phone, None)
+                _user_menu_view[phone] = None
+                _executor.submit(_send_welcome_menu, phone, socketio, None)
+                return
             response = ALL_SUB_RESPONSES.get(service, {}).get(selection) if selection else None
             if response:
                 _executor.submit(_send_text_reply, phone, response, socketio, service)
