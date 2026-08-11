@@ -48,10 +48,14 @@ _user_context = {}         # phone -> "main" once a consultation flow completes 
 # None/"biz"/"law", same vocabulary as `source`. This is deliberately
 # separate from `source` (the permanently-locked ad-attribution value):
 # `source` decides the very first automatic welcome menu after someone
-# clicks an ad, but an explicit typed "menu" always shows the combined
-# menu regardless of source (see MENU_TRIGGERS handling below) — so a
-# LawAdvise-ad user who asks for "menu" isn't permanently walled off
-# from BizAdvise services just because of which ad they clicked first.
+# clicks an ad, and an explicit typed "menu" (MENU_TRIGGERS) now sends
+# an ad-sourced user back to THAT SAME brand's menu rather than the
+# combined one — a LawAdvise-ad user asking for "menu" should land back
+# on LawAdvise services, not get dumped into the full BizAdvise+LawAdvise
+# list. Anyone who genuinely wants the full combined list (including an
+# ad-sourced user who wants the other brand too) can ask explicitly via
+# FULL_MENU_TRIGGERS ("full menu", "all services", etc.), which always
+# shows both sections regardless of source.
 # Numeric replies afterward need to be interpreted against whichever
 # menu the person is actually looking at, not against their locked
 # source — otherwise "3" would mean different things depending on
@@ -815,6 +819,17 @@ def _is_greeting(text: str) -> bool:
 BIZ_MENU_TRIGGERS = {"bizservices", "biz services", "bizservice", "bizadvise", "business services", "business service","biz", "business consulting"}
 LAW_MENU_TRIGGERS = {"lawservices", "law services", "lawservice", "lawadvise", "legal services", "legal service", "law", "legal consulting"}
 
+# Explicit ask for BOTH sections at once — always shows the full
+# combined menu, even for an ad-sourced user whose plain "menu"
+# (MENU_TRIGGERS) now takes them back to just their own brand. This is
+# the escape hatch for e.g. a LawAdvise-ad customer who also wants to
+# see BizAdvise services.
+FULL_MENU_TRIGGERS = {
+    "full menu", "all services", "all option", "all options", "everything",
+    "show all", "show everything", "both services", "full list",
+    "combined menu", "sab khidmaat", "sab services", "sab kuch dikhao",
+}
+
 # Sent to ANY plain greeting that isn't ad-sourced and isn't a direct
 # bizservices/lawservices request — whether it's a brand-new contact's
 # very first message or a returning contact saying hi again later.
@@ -1109,18 +1124,30 @@ def _handle_message(msg, socketio, name=""):
             _executor.submit(_send_welcome_menu, phone, socketio, source)
             return
 
-        if text_lower in MENU_TRIGGERS:
-            # An explicit "menu" request is a different signal than the
-            # passive first-touch welcome — the person is actively asking
-            # what's available, so always show the full combined menu,
-            # even if this phone number is permanently attributed to a
-            # LawAdvise or BizAdvise ad. That attribution still decides
-            # their very first automatic welcome; it just no longer boxes
-            # them out of the other brand's services on request.
+        if text_lower in FULL_MENU_TRIGGERS:
+            # Explicit ask for EVERYTHING — always the full combined menu,
+            # regardless of which ad (if any) this phone is attributed to.
             _user_service_context.pop(phone, None)
             _contact_collection.pop(phone, None)
             _user_menu_view[phone] = None
             _executor.submit(_send_welcome_menu, phone, socketio, None)
+            return
+
+        if text_lower in MENU_TRIGGERS:
+            # An explicit "menu" request is a different signal than the
+            # passive first-touch welcome — the person is actively asking
+            # what's available. For an ad-sourced phone number, that means
+            # THEIR brand's menu again (a LawAdvise-ad customer typing
+            # "menu" should land back on LawAdvise services, not the
+            # combined BizAdvise+LawAdvise list). Organic/unknown-source
+            # users still get the combined menu, since there's no single
+            # brand to send them back to. Anyone who wants the full
+            # combined list on purpose can ask via FULL_MENU_TRIGGERS above.
+            _user_service_context.pop(phone, None)
+            _contact_collection.pop(phone, None)
+            menu_source = source if source in ("biz", "law") else None
+            _user_menu_view[phone] = menu_source
+            _executor.submit(_send_welcome_menu, phone, socketio, menu_source)
             return
 
         if text_lower in BIZ_MENU_TRIGGERS:
@@ -1203,7 +1230,16 @@ def _handle_message(msg, socketio, name=""):
             selected_title = interactive["list_reply"]["title"]
             save_message(phone, selected_title, "user", socketio,
                          status="delivered", whatsapp_message_id=msg_id)
-            if selected_id in BIZ_DIRECT_IDS:
+            if selected_id == "show_full_menu":
+                # Tapped the "See All Services" row appended to a
+                # single-brand menu — same as typing a FULL_MENU_TRIGGERS
+                # phrase, always shows the combined menu regardless of
+                # this phone's ad source.
+                _user_service_context.pop(phone, None)
+                _contact_collection.pop(phone, None)
+                _user_menu_view[phone] = None
+                _executor.submit(_send_welcome_menu, phone, socketio, None)
+            elif selected_id in BIZ_DIRECT_IDS:
                 response = BUTTON_RESPONSES.get(selected_id, "")
                 if response:
                     _executor.submit(_send_text_reply, phone, response, socketio, selected_id)
@@ -1314,11 +1350,27 @@ def _handle_contact_collection(phone, text, socketio):
     # step and jump straight back to the main menu, instead of being
     # stuck finishing (or awkwardly answering into) Name/Mobile/Best-Time
     # just because they started down this path earlier.
-    if text.strip().lower() in MENU_TRIGGERS:
+    text_lower = text.strip().lower()
+
+    if text_lower in FULL_MENU_TRIGGERS:
+        # Explicit ask for EVERYTHING — full combined menu regardless of
+        # this phone's ad source.
         del _contact_collection[phone]
         _user_service_context.pop(phone, None)
         _user_menu_view[phone] = None
         _executor.submit(_send_welcome_menu, phone, socketio, None)
+        return
+
+    if text_lower in MENU_TRIGGERS:
+        # Plain "menu" bails back to THIS phone's own brand menu (if
+        # ad-sourced) rather than the combined one — same reasoning as
+        # the MENU_TRIGGERS branch in _handle_message.
+        del _contact_collection[phone]
+        _user_service_context.pop(phone, None)
+        source = get_user_source(phone)
+        menu_source = source if source in ("biz", "law") else None
+        _user_menu_view[phone] = menu_source
+        _executor.submit(_send_welcome_menu, phone, socketio, menu_source)
         return
 
     if step == "awaiting_callback_choice":

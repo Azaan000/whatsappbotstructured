@@ -177,6 +177,21 @@ def ask_ai(user_message: str, retries: int = 1) -> str:
         return "AI service is not configured. Please contact support."
 
     context = get_relevant_knowledge(user_message)
+    if not context.strip():
+        # No knowledge-base block matched this message at all — don't
+        # send it to the model with an empty KNOWLEDGE BASE section and
+        # hope it follows the "say the fallback line" instruction.
+        # meta-llama/llama-3-8b-instruct:free (or whatever AI_MODEL is
+        # set to) is a small free-tier model and isn't reliable at
+        # sticking to "answer strictly from context" when there's no
+        # context to answer from — it can end up answering off-topic
+        # questions from its own general knowledge instead, which is
+        # exactly what this bot shouldn't do. Returning the fallback
+        # directly makes that behavior deterministic, and skips a
+        # pointless OpenRouter call (saving latency + cost) on a
+        # message that was never going to be grounded anyway.
+        return FALLBACK_REPLY
+
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",

@@ -114,6 +114,18 @@ _LAW_SECTION = {
     ]
 }
 
+# Appended only to a single-brand section (see send_main_menu below) so
+# an ad-sourced customer looking at just BizAdvise or just LawAdvise has
+# a tappable way to reach the combined menu, instead of needing to
+# already know a typed FULL_MENU_TRIGGERS phrase like "full menu". Not
+# added when both sections are already shown together — there's nothing
+# further to escape to at that point.
+_SHOW_FULL_MENU_ROW = {
+    "id": "show_full_menu",
+    "title": "See All Services",
+    "description": "View Business + Legal services together",
+}
+
 
 def send_main_menu(to: str, source: str = None):
     """source: 'biz' -> BizAdvise section only, 'law' -> LawAdvise section
@@ -124,10 +136,10 @@ def send_main_menu(to: str, source: str = None):
     try:
         if source == "biz":
             header_text = "BizAdvise Consulting"
-            sections = [_BIZ_SECTION]
+            sections = [{**_BIZ_SECTION, "rows": _BIZ_SECTION["rows"] + [_SHOW_FULL_MENU_ROW]}]
         elif source == "law":
             header_text = "LawAdvise Consulting"
-            sections = [_LAW_SECTION]
+            sections = [{**_LAW_SECTION, "rows": _LAW_SECTION["rows"] + [_SHOW_FULL_MENU_ROW]}]
         else:
             header_text = "BizAdvise & LawAdvise Consulting"
             sections = [_BIZ_SECTION, _LAW_SECTION]
