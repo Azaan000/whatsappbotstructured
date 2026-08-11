@@ -1,3 +1,4 @@
+import json
 import os
 import sqlite3
 from datetime import datetime
@@ -198,6 +199,72 @@ def init_db():
             FOREIGN KEY (created_by) REFERENCES dashboard_users (id)
         )
     """)
+
+    # One row per (broadcast, recipient) instead of one giant JSON array
+    # crammed into broadcasts.recipients. That JSON-blob design meant
+    # marking a single recipient sent/failed required reading the WHOLE
+    # array, parsing it, scanning it for the matching phone, and writing
+    # the WHOLE array back — for every recipient, every send. A 5,000-
+    # person broadcast did that 5,000 times, each one working with an
+    # array that size, and each write persisting an increasingly large
+    # blob to disk: O(n) work repeated n times = O(n^2) total, entirely
+    # unrelated to the natural per-recipient send delay. A dedicated
+    # table with an index on (broadcast_id, phone) turns each status
+    # update into a single indexed row UPDATE — O(1) regardless of how
+    # large the broadcast is. See models/broadcast.py.
+    just_created_broadcast_recipients = False
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='broadcast_recipients'"
+    )
+    if cursor.fetchone() is None:
+        just_created_broadcast_recipients = True
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS broadcast_recipients (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            broadcast_id  INTEGER NOT NULL,
+            phone         TEXT NOT NULL,
+            name          TEXT DEFAULT '',
+            status        TEXT DEFAULT 'pending',
+            FOREIGN KEY (broadcast_id) REFERENCES broadcasts (id)
+        )
+    """)
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_broadcast_recipients_unique
+        ON broadcast_recipients (broadcast_id, phone)
+    """)
+
+    # One-time backfill: broadcasts created before this table existed
+    # only have their recipients in the old JSON blob column. Migrate
+    # them in so history/retry still works for broadcasts sent before
+    # this fix shipped. Guarded by just_created_broadcast_recipients
+    # (rather than running every startup) so this doesn't re-parse
+    # every broadcast's JSON on every restart once it's done.
+    if just_created_broadcast_recipients:
+        cursor.execute(
+            "SELECT id, recipients FROM broadcasts WHERE recipients IS NOT NULL AND recipients NOT IN ('', '[]')"
+        )
+        legacy_rows = cursor.fetchall()
+        to_insert = []
+        for row in legacy_rows:
+            try:
+                recips = json.loads(row["recipients"] or "[]")
+            except (ValueError, TypeError):
+                recips = []
+            for r in recips:
+                to_insert.append((
+                    row["id"],
+                    r.get("phone", ""),
+                    r.get("name", ""),
+                    r.get("status", "pending"),
+                ))
+        if to_insert:
+            cursor.executemany(
+                """INSERT OR IGNORE INTO broadcast_recipients
+                   (broadcast_id, phone, name, status) VALUES (?, ?, ?, ?)""",
+                to_insert,
+            )
+            print(f"Backfilled {len(to_insert)} broadcast recipient row(s) from legacy JSON")
 
     # Indexes for fast lookups
     cursor.execute("""

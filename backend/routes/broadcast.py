@@ -1,207 +1,235 @@
-import os
-from datetime import datetime
-
-from flask import Blueprint, request, jsonify, current_app
-from werkzeug.utils import secure_filename
-
-from models.broadcast import (
-    create_broadcast,
-    set_recipient_status,
-    finish_broadcast,
-    get_broadcast,
-    list_broadcasts,
-    create_template,
-    list_templates,
-    delete_template,
-)
-from models.message import save_message
-from bot.whatsapp_handler import resolve_media_type, send_media
-from utils.auth import require_auth
-
-broadcast_bp = Blueprint("broadcast", __name__)
-
-MEDIA_FOLDER = os.getenv("MEDIA_FOLDER", "media_files")
-os.makedirs(MEDIA_FOLDER, exist_ok=True)
-
-ALLOWED_EXTENSIONS = {
-    "png", "jpg", "jpeg", "gif", "webp",
-    "pdf", "doc", "docx", "txt",
-    "mp3", "wav", "ogg",
-    "mp4", "mov",
-}
+from datetime import datetime, timezone
+from models.database import get_db
 
 
-def _allowed(filename):
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+def _now():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _socketio():
-    return current_app.extensions["socketio"]
+def create_broadcast(
+    message, recipients, file_name="", media_path="", media_type="",
+    created_by=None, scheduled_at=None, min_delay_ms=400, max_delay_ms=900,
+):
+    """recipients: list of {phone, name}. Every recipient starts out
+    'pending' — the dashboard (or, for scheduled sends, the background
+    scheduler) flips each one to 'sent'/'failed' as the send loop works
+    through the list, so a broadcast that's interrupted part-way still
+    has a durable record of exactly who's left.
+
+    Recipients are stored one row per person in broadcast_recipients
+    (not as a JSON blob on this row) — see set_recipient_status for why
+    that matters once a broadcast has real volume.
+
+    If scheduled_at is given the broadcast is created in 'scheduled'
+    status and nothing is sent yet — the background scheduler thread
+    picks it up once it's due."""
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        now = _now()
+        status = "scheduled" if scheduled_at else "in_progress"
+        cursor.execute(
+            """INSERT INTO broadcasts
+               (message, file_name, media_path, media_type, total, sent, failed,
+                status, recipients, created_by, scheduled_at, min_delay_ms, max_delay_ms,
+                created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, 0, 0, ?, '[]', ?, ?, ?, ?, ?, ?)""",
+            (
+                message, file_name, media_path, media_type, len(recipients),
+                status, created_by, scheduled_at or "",
+                min_delay_ms, max_delay_ms, now, now,
+            ),
+        )
+        broadcast_id = cursor.lastrowid
+
+        cursor.executemany(
+            """INSERT INTO broadcast_recipients (broadcast_id, phone, name, status)
+               VALUES (?, ?, ?, 'pending')""",
+            [(broadcast_id, r.get("phone", ""), r.get("name", "")) for r in recipients],
+        )
+        conn.commit()
+        return broadcast_id
+    finally:
+        conn.close()
 
 
-# ── Broadcasts ───────────────────────────────────────────────────────────
+def set_recipient_status(broadcast_id, phone, status):
+    """Marks one recipient sent/failed and keeps the sent/failed
+    counters in sync, including the case where a retry flips a
+    previously-failed recipient over to sent.
 
-@broadcast_bp.route("/broadcasts", methods=["GET"])
-@require_auth
-def broadcasts_list():
-    limit = request.args.get("limit", 50, type=int)
-    return jsonify(list_broadcasts(limit=limit))
+    O(1) — a single indexed UPDATE on broadcast_recipients plus a
+    counter increment on the broadcasts row. This used to read the
+    ENTIRE recipients JSON array off the broadcasts row, parse it, scan
+    it for this phone, and write the WHOLE array back — for every
+    recipient, on every send. A 5,000-person broadcast did that 5,000
+    times, so total work (and total bytes written to disk) grew as
+    O(n^2) with the broadcast size, on top of the natural per-recipient
+    send delay. Recipients now live one-row-each in
+    broadcast_recipients with a unique index on (broadcast_id, phone),
+    so this is a single point lookup + point update regardless of how
+    many people are in the broadcast."""
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT status FROM broadcast_recipients WHERE broadcast_id=? AND phone=?",
+            (broadcast_id, phone),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return False
+
+        prev = row["status"]
+        if prev == status:
+            return True  # already in this state — nothing to update or recount
+
+        cursor.execute(
+            "UPDATE broadcast_recipients SET status=? WHERE broadcast_id=? AND phone=?",
+            (status, broadcast_id, phone),
+        )
+
+        sent_delta = (1 if status == "sent" else 0) - (1 if prev == "sent" else 0)
+        failed_delta = (1 if status == "failed" else 0) - (1 if prev == "failed" else 0)
+        cursor.execute(
+            "UPDATE broadcasts SET sent = sent + ?, failed = failed + ?, updated_at=? WHERE id=?",
+            (sent_delta, failed_delta, _now(), broadcast_id),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
 
 
-@broadcast_bp.route("/broadcasts/upload", methods=["POST"])
-@require_auth
-def broadcasts_upload():
-    """Stores an attachment for a broadcast (immediate or scheduled) and
-    returns a reference to it. Kept separate from /send-file since a
-    broadcast attachment needs to persist and be reused for every
-    recipient, rather than being sent once."""
-    if "file" not in request.files:
-        return jsonify({"error": "No file provided"}), 400
-    file = request.files["file"]
-    if not file.filename or not _allowed(file.filename):
-        return jsonify({"error": "File type not allowed"}), 400
+def finish_broadcast(broadcast_id, status="completed"):
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE broadcasts SET status=?, updated_at=? WHERE id=?",
+            (status, _now(), broadcast_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
 
-    original_name = file.filename
-    safe_name = secure_filename(
-        f"broadcast_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{original_name}"
+
+def mark_broadcast_sending(broadcast_id):
+    """Flips a due 'scheduled' broadcast to 'in_progress' right before
+    the scheduler starts working through it."""
+    return finish_broadcast(broadcast_id, status="in_progress")
+
+
+def _fetch_recipients(cursor, broadcast_id):
+    cursor.execute(
+        """SELECT phone, name, status FROM broadcast_recipients
+           WHERE broadcast_id=? ORDER BY id""",
+        (broadcast_id,),
     )
-    filepath = os.path.join(MEDIA_FOLDER, safe_name)
-    file.save(filepath)
-
-    return jsonify({
-        "file_name": original_name,
-        "media_path": filepath,
-        "media_type": resolve_media_type(original_name),
-    }), 201
+    return [
+        {"phone": r["phone"], "name": r["name"] or "", "status": r["status"] or "pending"}
+        for r in cursor.fetchall()
+    ]
 
 
-@broadcast_bp.route("/broadcasts/send-media", methods=["POST"])
-@require_auth
-def broadcasts_send_media():
-    """Sends an already-uploaded broadcast attachment (from /broadcasts/upload)
-    to one recipient, reusing the single stored file instead of saving a
-    fresh copy to disk per recipient — /send-file re-uploads and re-saves
-    the file every time it's called, which for a broadcast means one
-    duplicate file per recipient (and, since its filenames are only
-    timestamped to the second, recipients sent within the same second can
-    even overwrite each other's copy)."""
-    data = request.json or {}
-    phone = data.get("phone")
-    media_path = data.get("media_path")
-    media_type = data.get("media_type", "document")
-    caption = data.get("caption", "")
-
-    if not phone or not media_path:
-        return jsonify({"error": "phone and media_path required"}), 400
-
-    # Only allow files actually inside our media folder — prevents this
-    # endpoint being used to make the bot send an arbitrary file from disk.
-    real_media_folder = os.path.realpath(MEDIA_FOLDER)
-    real_path = os.path.realpath(media_path)
-    if os.path.commonpath([real_media_folder, real_path]) != real_media_folder:
-        return jsonify({"error": "Invalid media_path"}), 400
-    if not os.path.exists(real_path):
-        return jsonify({"error": "File not found"}), 404
-
-    success, wa_id = send_media(phone, real_path, media_type, caption)
-    if success:
-        save_message(phone, caption, "bot", _socketio(),
-                     message_type=media_type, file_name=os.path.basename(real_path),
-                     media_path=real_path, whatsapp_message_id=wa_id)
-        return jsonify({"success": True, "message_id": wa_id})
-    return jsonify({"error": "Failed to send file"}), 500
+def get_broadcast(broadcast_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """SELECT b.*, d.display_name AS created_by_name
+               FROM broadcasts b LEFT JOIN dashboard_users d ON d.id = b.created_by
+               WHERE b.id=?""",
+            (broadcast_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["recipients"] = _fetch_recipients(cursor, broadcast_id)
+        return d
+    finally:
+        conn.close()
 
 
-@broadcast_bp.route("/broadcasts", methods=["POST"])
-@require_auth
-def broadcasts_create():
-    data = request.json or {}
-    message = data.get("message", "")
-    recipients = data.get("recipients") or []
-    file_name = data.get("file_name", "")
-    media_path = data.get("media_path", "")
-    media_type = data.get("media_type", "")
-    scheduled_at = data.get("scheduled_at") or None
-    min_delay_ms = data.get("min_delay_ms", 400)
-    max_delay_ms = data.get("max_delay_ms", 900)
-
-    if not recipients:
-        return jsonify({"error": "recipients required"}), 400
-    if not message and not file_name:
-        return jsonify({"error": "message or file required"}), 400
-
-    broadcast_id = create_broadcast(
-        message, recipients, file_name=file_name,
-        media_path=media_path, media_type=media_type,
-        created_by=getattr(request, "dashboard_user_id", None),
-        scheduled_at=scheduled_at,
-        min_delay_ms=min_delay_ms, max_delay_ms=max_delay_ms,
-    )
-    return jsonify({"id": broadcast_id}), 201
+def list_broadcasts(limit=50):
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """SELECT b.*, d.display_name AS created_by_name
+               FROM broadcasts b LEFT JOIN dashboard_users d ON d.id = b.created_by
+               ORDER BY b.created_at DESC LIMIT ?""",
+            (limit,),
+        )
+        rows = cursor.fetchall()
+        result = []
+        for row in rows:
+            d = dict(row)
+            d["recipients"] = _fetch_recipients(cursor, d["id"])
+            result.append(d)
+        return result
+    finally:
+        conn.close()
 
 
-@broadcast_bp.route("/broadcasts/<int:broadcast_id>", methods=["GET"])
-@require_auth
-def broadcasts_get(broadcast_id):
-    row = get_broadcast(broadcast_id)
-    if not row:
-        return jsonify({"error": "Broadcast not found"}), 404
-    return jsonify(row)
-
-
-@broadcast_bp.route("/broadcasts/<int:broadcast_id>/recipient", methods=["PATCH"])
-@require_auth
-def broadcasts_update_recipient(broadcast_id):
-    data = request.json or {}
-    phone = data.get("phone")
-    status = data.get("status")
-    if not phone or status not in ("sent", "failed", "pending"):
-        return jsonify({"error": "phone and valid status required"}), 400
-    ok = set_recipient_status(broadcast_id, phone, status)
-    if not ok:
-        return jsonify({"error": "Broadcast not found"}), 404
-    return jsonify({"success": True})
-
-
-@broadcast_bp.route("/broadcasts/<int:broadcast_id>", methods=["PATCH"])
-@require_auth
-def broadcasts_finish(broadcast_id):
-    data = request.json or {}
-    status = data.get("status", "completed")
-    if status not in ("completed", "stopped", "in_progress", "scheduled"):
-        return jsonify({"error": "invalid status"}), 400
-    ok = finish_broadcast(broadcast_id, status=status)
-    if not ok:
-        return jsonify({"error": "Broadcast not found"}), 404
-    return jsonify({"success": True})
+def get_due_scheduled_broadcasts():
+    """Scheduled broadcasts whose send time has arrived (or passed —
+    e.g. the server was down when it was due)."""
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        now = _now()
+        cursor.execute(
+            """SELECT * FROM broadcasts
+               WHERE status='scheduled' AND scheduled_at != '' AND scheduled_at <= ?
+               ORDER BY scheduled_at ASC""",
+            (now,),
+        )
+        rows = cursor.fetchall()
+        result = []
+        for row in rows:
+            d = dict(row)
+            d["recipients"] = _fetch_recipients(cursor, d["id"])
+            result.append(d)
+        return result
+    finally:
+        conn.close()
 
 
 # ── Templates ────────────────────────────────────────────────────────────
 
-@broadcast_bp.route("/broadcast-templates", methods=["GET"])
-@require_auth
-def templates_list():
-    return jsonify(list_templates())
+def create_template(name, message, created_by=None):
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "INSERT INTO broadcast_templates (name, message, created_by, created_at) VALUES (?, ?, ?, ?)",
+            (name, message, created_by, _now()),
+        )
+        conn.commit()
+        return cursor.lastrowid
+    finally:
+        conn.close()
 
 
-@broadcast_bp.route("/broadcast-templates", methods=["POST"])
-@require_auth
-def templates_create():
-    data = request.json or {}
-    name = (data.get("name") or "").strip()
-    message = (data.get("message") or "").strip()
-    if not name or not message:
-        return jsonify({"error": "name and message required"}), 400
-    template_id = create_template(
-        name, message, created_by=getattr(request, "dashboard_user_id", None)
-    )
-    return jsonify({"id": template_id}), 201
+def list_templates():
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT * FROM broadcast_templates ORDER BY created_at DESC")
+        return [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
 
 
-@broadcast_bp.route("/broadcast-templates/<int:template_id>", methods=["DELETE"])
-@require_auth
-def templates_delete(template_id):
-    ok = delete_template(template_id)
-    if not ok:
-        return jsonify({"error": "Template not found"}), 404
-    return jsonify({"success": True})
+def delete_template(template_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM broadcast_templates WHERE id=?", (template_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
