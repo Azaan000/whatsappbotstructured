@@ -188,6 +188,67 @@ export const api = {
 
   reloadKnowledge: () =>
     request("/reload-knowledge", { method: "POST" }),
+
+  // ── Broadcasts ────────────────────────────────────────────────────
+  listBroadcasts: (limit = 50) => request(`/broadcasts?limit=${limit}`),
+
+  getBroadcast: (id) => request(`/broadcasts/${id}`),
+
+  createBroadcast: (payload) =>
+    request("/broadcasts", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  updateBroadcastRecipient: (id, phone, status) =>
+    request(`/broadcasts/${id}/recipient`, {
+      method: "PATCH",
+      body: JSON.stringify({ phone, status }),
+    }),
+
+  finishBroadcast: (id, status = "completed") =>
+    request(`/broadcasts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
+
+  uploadBroadcastMedia: (file) => {
+    const form = new FormData();
+    form.append("file", file);
+    return fetch(`${BASE}/broadcasts/upload`, {
+      method: "POST",
+      headers: { "X-Dashboard-Token": authToken() },
+      body: form,
+    }).then(async (r) => {
+      if (r.status === 401) {
+        clearSession();
+        onUnauthorized();
+      }
+      if (!r.ok) throw new Error("Failed to upload file");
+      return r.json();
+    });
+  },
+
+  // Sends a file already stored via uploadBroadcastMedia to one
+  // recipient, reusing that single stored copy — unlike sendFile,
+  // which re-uploads and re-saves a fresh copy to disk on every call
+  // (fine for one-off sends, wasteful/duplicative in a broadcast loop).
+  sendBroadcastMedia: (phone, mediaPath, mediaType, caption = "") =>
+    request("/broadcasts/send-media", {
+      method: "POST",
+      body: JSON.stringify({ phone, media_path: mediaPath, media_type: mediaType, caption }),
+    }),
+
+  listBroadcastTemplates: () => request("/broadcast-templates"),
+
+  createBroadcastTemplate: (name, message) =>
+    request("/broadcast-templates", {
+      method: "POST",
+      body: JSON.stringify({ name, message }),
+    }),
+
+  deleteBroadcastTemplate: (id) =>
+    request(`/broadcast-templates/${id}`, { method: "DELETE" }),
 };
 
 export { BASE };

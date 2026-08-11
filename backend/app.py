@@ -15,6 +15,7 @@ from routes.webhook import webhook_bp
 from routes.analytics import analytics_bp
 from routes.chat import chat_bp
 from routes.auth import auth_bp
+from routes.broadcast import broadcast_bp
 from utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -46,6 +47,7 @@ app.register_blueprint(webhook_bp)
 app.register_blueprint(analytics_bp)
 app.register_blueprint(chat_bp)
 app.register_blueprint(auth_bp)
+app.register_blueprint(broadcast_bp)
 
 
 @app.route("/")
@@ -113,6 +115,58 @@ def _run_db_backup():
         time.sleep(21600)  # every 6 hours
 
 
+def _run_scheduled_broadcasts():
+    """Background thread: every minute, look for broadcasts that were
+    scheduled for a future time and are now due, and actually send
+    them. This runs server-side (unlike an immediate broadcast, which
+    the dashboard drives from the browser) because a scheduled send has
+    to go out even if nobody has the dashboard open at that moment.
+    """
+    import random
+    from models.broadcast import (
+        get_due_scheduled_broadcasts, mark_broadcast_sending,
+        set_recipient_status, finish_broadcast,
+    )
+    from models.message import save_message
+    from bot.whatsapp_handler import send_text, send_media
+
+    time.sleep(30)  # let the app finish starting up first
+    while True:
+        try:
+            due = get_due_scheduled_broadcasts()
+            for b in due:
+                mark_broadcast_sending(b["id"])
+                min_delay = max(0, b.get("min_delay_ms") or 400) / 1000
+                max_delay = max(min_delay, (b.get("max_delay_ms") or 900) / 1000)
+                for r in b["recipients"]:
+                    if r.get("status") == "sent":
+                        continue  # already sent (e.g. a resumed/interrupted run)
+                    phone = r["phone"]
+                    try:
+                        if b.get("media_path"):
+                            success, wa_id = send_media(
+                                phone, b["media_path"], b.get("media_type") or "document",
+                                b.get("message") or f"Sent: {b.get('file_name','')}",
+                            )
+                        else:
+                            success, wa_id = send_text(phone, b["message"])
+                        status = "sent" if success else "failed"
+                        save_message(
+                            phone, b.get("message") or f"Sent: {b.get('file_name','')}",
+                            "bot", socketio, status=status, whatsapp_message_id=wa_id,
+                        )
+                    except Exception as e:
+                        log.error(f"Scheduled broadcast {b['id']} send error for {phone}: {e}")
+                        status = "failed"
+                    set_recipient_status(b["id"], phone, status)
+                    time.sleep(random.uniform(min_delay, max_delay))
+                finish_broadcast(b["id"], status="completed")
+                log.info(f"Scheduled broadcast {b['id']} sent")
+        except Exception as e:
+            log.error(f"Scheduled broadcast runner error: {e}")
+        time.sleep(60)
+
+
 # Start background cleanup thread
 cleanup_thread = threading.Thread(target=_run_media_cleanup, daemon=True)
 cleanup_thread.start()
@@ -120,6 +174,10 @@ cleanup_thread.start()
 # Start background database backup thread
 backup_thread = threading.Thread(target=_run_db_backup, daemon=True)
 backup_thread.start()
+
+# Start background scheduled-broadcast thread
+scheduled_broadcast_thread = threading.Thread(target=_run_scheduled_broadcasts, daemon=True)
+scheduled_broadcast_thread.start()
 
 
 if __name__ == "__main__":

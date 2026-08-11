@@ -156,6 +156,49 @@ def init_db():
         )
     """)
 
+    # Broadcasts: one row per broadcast "job". `recipients` holds a JSON
+    # array of {phone, name, status} so a broadcast that's interrupted
+    # (browser closed, staff hits Stop, server restarts mid-send) still
+    # has a durable per-recipient record to resume/retry from, and past
+    # broadcasts remain visible as history even after the modal closes.
+    # `scheduled_at` is set (and status='scheduled') for a future send;
+    # the background scheduler thread in app.py flips it to
+    # 'in_progress' and works through it once it's due.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS broadcasts (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            message       TEXT DEFAULT '',
+            file_name     TEXT DEFAULT '',
+            media_path    TEXT DEFAULT '',
+            media_type    TEXT DEFAULT '',
+            total         INTEGER DEFAULT 0,
+            sent          INTEGER DEFAULT 0,
+            failed        INTEGER DEFAULT 0,
+            status        TEXT DEFAULT 'in_progress',
+            recipients    TEXT DEFAULT '[]',
+            created_by    INTEGER,
+            scheduled_at  TEXT DEFAULT '',
+            min_delay_ms  INTEGER DEFAULT 400,
+            max_delay_ms  INTEGER DEFAULT 900,
+            created_at    TEXT,
+            updated_at    TEXT,
+            FOREIGN KEY (created_by) REFERENCES dashboard_users (id)
+        )
+    """)
+
+    # Saved/reusable broadcast messages ("templates") so staff don't
+    # have to retype the same announcement every time.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS broadcast_templates (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            name          TEXT NOT NULL,
+            message       TEXT DEFAULT '',
+            created_by    INTEGER,
+            created_at    TEXT,
+            FOREIGN KEY (created_by) REFERENCES dashboard_users (id)
+        )
+    """)
+
     # Indexes for fast lookups
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_messages_phone
@@ -192,6 +235,14 @@ def init_db():
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_consultations_created
         ON consultations (created_at DESC)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_broadcasts_created
+        ON broadcasts (created_at DESC)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_broadcasts_status_scheduled
+        ON broadcasts (status, scheduled_at)
     """)
 
     conn.commit()

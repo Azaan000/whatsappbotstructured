@@ -141,7 +141,7 @@ def get_all_users():
         # always consistent with the actual message log, and correctly
         # reflects messages that arrived while the dashboard was closed.
         cursor.execute("""
-            SELECT u.phone, u.name, u.human_mode, u.tags, u.notes,
+            SELECT u.phone, u.name, u.human_mode, u.tags, u.notes, u.source,
                    u.total_messages, u.first_seen, u.last_seen, u.last_message,
                    (SELECT COUNT(*) FROM messages m
                     WHERE m.phone = u.phone
@@ -158,6 +158,9 @@ def get_all_users():
                 "human_mode": r["human_mode"],
                 "tags": r["tags"] or "",
                 "notes": r["notes"] or "",
+                # which brand ('biz'/'law') brought this user in via an ad,
+                # or '' if organic/unknown — used for broadcast targeting
+                "source": r["source"] or "",
                 "total_messages": r["total_messages"] or 0,
                 "first_seen": r["first_seen"] or "",
                 "last_seen": r["last_seen"],
