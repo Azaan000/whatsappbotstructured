@@ -694,7 +694,7 @@ MENU_TRIGGERS = {
     "menu", "options", "option", "start", "help", "main menu", "mainmenu",
     "info", "information", "details", "services", "service", "list",
     "list of services", "what can you do", "what do you do", "show menu",
-    "show options", "restart", "reset","help me"
+    "show options", "restart", "reset", "help me",
     "menu dikhao", "options dikhao", "madad", "madat", "khidmaat",
     "khidmat", "khidmaat dikhao", "tafseel", "tafaseel", "shuru",
     "shuru karo",
