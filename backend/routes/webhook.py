@@ -16,7 +16,7 @@ from models.message import save_message, update_message_status
 import models.consultation as consultation_model
 from models.database import get_db
 from bot.ai_client import ask_ai
-from bot.whatsapp_handler import send_text, send_main_menu, send_service_menu
+from bot.whatsapp_handler import send_text, send_main_menu, send_service_menu, send_greeting_buttons
 from utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -281,6 +281,30 @@ BUTTON_RESPONSES = {
     "contact_us": _consult_choice_message("📞 *Contact Us*"),
 }
 
+# ── "Back to menu" hint ───────────────────────────────────────────────────
+# Appended to every leaf response so a customer reading any single
+# service's answer can jump straight back to the main menu by typing
+# *menu* — instead of having to remember the word on their own or
+# re-walk the whole numbered sequence to get back to where they started.
+_BACK_TO_MENU_HINT = "\n\n🔙 Type *menu* anytime to return to the main menu."
+
+
+def _add_back_to_menu_hint(d: dict) -> dict:
+    """Appends the hint (in place) to every string value in a flat dict,
+    or recurses into every inner dict of a dict-of-dicts. Skips any
+    value that already carries the hint, so values borrowed from an
+    already-hinted dict (e.g. BIZ_SUB_RESPONSES pulling straight from
+    BUTTON_RESPONSES) never get it appended twice."""
+    for key, value in d.items():
+        if isinstance(value, dict):
+            _add_back_to_menu_hint(value)
+        elif isinstance(value, str) and _BACK_TO_MENU_HINT not in value:
+            d[key] = value + _BACK_TO_MENU_HINT
+    return d
+
+
+_add_back_to_menu_hint(BUTTON_RESPONSES)
+
 TEXT_SUB_MENU = {
     "online_nikah":   "You selected *Online Marriage / Online Nikah* 🕌\n\nReply with:\n1️⃣ Procedure\n2️⃣ Documents\n3️⃣ Talk to a Lawyer",
     "court_marriage": "You selected *Court Marriage* 💍\n\nReply with:\n1️⃣ Procedure\n2️⃣ Documents\n3️⃣ Book Consultation",
@@ -304,6 +328,9 @@ TEXT_SUB_RESPONSES = {
     "corporate_law":  {"1": BUTTON_RESPONSES["corporate_procedure"],"2": BUTTON_RESPONSES["corporate_timeline"],   "3": BUTTON_RESPONSES["corporate_consult"]},
     "legal_docs":     {"1": BUTTON_RESPONSES["docs_procedure"],     "2": BUTTON_RESPONSES["docs_timeline"],         "3": BUTTON_RESPONSES["docs_consult"]},
 }
+
+_add_back_to_menu_hint(TEXT_SUB_MENU)
+_add_back_to_menu_hint(TEXT_SUB_RESPONSES)
 
 BIZ_SUB_MENU = {
     "biz_business": (
@@ -352,6 +379,8 @@ BIZ_SUB_MENU = {
         "8️⃣ Talk to an Expert"
     ),
 }
+
+_add_back_to_menu_hint(BIZ_SUB_MENU)
 
 BIZ_SUB_RESPONSES = {
     "biz_business": {
@@ -424,6 +453,8 @@ BIZ_SUB_RESPONSES = {
         "8": BUTTON_RESPONSES["biz_consult"],
     },
 }
+
+_add_back_to_menu_hint(BIZ_SUB_RESPONSES)
 
 ALL_SUB_MENUS = {**TEXT_SUB_MENU, **BIZ_SUB_MENU}
 ALL_SUB_RESPONSES = {**TEXT_SUB_RESPONSES, **BIZ_SUB_RESPONSES}
@@ -776,6 +807,13 @@ GREETING_REPLY = (
     "services, or *menu* to see everything."
 )
 
+# Used only as the BODY of the interactive greeting-buttons message —
+# "or select below" only makes sense when the 3 buttons are actually
+# attached underneath it. If the interactive send fails and we fall
+# back to plain text (see _send_greeting_reply), GREETING_REPLY itself
+# goes out instead, with no dangling "select below" pointing at nothing.
+GREETING_REPLY_WITH_BUTTONS = GREETING_REPLY[:-1] + " — or select below 👇"
+
 
 def _get_socketio():
     return current_app.extensions["socketio"]
@@ -1041,7 +1079,7 @@ def _handle_message(msg, socketio, name=""):
                 # request — greet them and let them pick, same short reply
                 # a returning contact gets, instead of dumping the full menu.
                 _user_menu_view[phone] = None
-                _executor.submit(_send_text_reply, phone, GREETING_REPLY, socketio)
+                _executor.submit(_send_greeting_reply, phone, socketio)
                 return
 
             # Anything else from a brand-new contact (an explicit "menu",
@@ -1085,7 +1123,7 @@ def _handle_message(msg, socketio, name=""):
             # of routing to the AI.
             mode = get_user_mode(phone)
             if mode == 0:
-                _executor.submit(_send_text_reply, phone, GREETING_REPLY, socketio)
+                _executor.submit(_send_greeting_reply, phone, socketio)
             return
 
         if phone in _user_service_context:
@@ -1152,6 +1190,18 @@ def _handle_message(msg, socketio, name=""):
             button_title = interactive["button_reply"]["title"]
             save_message(phone, button_title, "user", socketio,
                          status="delivered", whatsapp_message_id=msg_id)
+
+            if button_id in ("greet_biz", "greet_law", "greet_menu"):
+                # Tapped one of the 3 greeting quick-reply buttons —
+                # routes to the exact same place as typing bizservices /
+                # lawservices / menu would.
+                _user_service_context.pop(phone, None)
+                _contact_collection.pop(phone, None)
+                menu_source = {"greet_biz": "biz", "greet_law": "law", "greet_menu": None}[button_id]
+                _user_menu_view[phone] = menu_source
+                _executor.submit(_send_welcome_menu, phone, socketio, menu_source)
+                return
+
             if button_id in SERVICE_MENU_IDS:
                 _user_service_context[phone] = button_id
                 _executor.submit(_send_service_menu_safe, phone, button_id, socketio)
@@ -1234,17 +1284,28 @@ def _handle_contact_collection(phone, text, socketio):
     state = _contact_collection.get(phone, {})
     step = state.get("step")
 
+    # Let the customer bail out of the callback/booking flow at any
+    # step and jump straight back to the main menu, instead of being
+    # stuck finishing (or awkwardly answering into) Name/Mobile/Best-Time
+    # just because they started down this path earlier.
+    if text.strip().lower() in MENU_TRIGGERS:
+        del _contact_collection[phone]
+        _user_service_context.pop(phone, None)
+        _user_menu_view[phone] = None
+        _executor.submit(_send_welcome_menu, phone, socketio, None)
+        return
+
     if step == "awaiting_callback_choice":
         choice = _interpret_yes_no(text)
         if choice == "yes":
             _contact_collection[phone]["step"] = "awaiting_name"
             _executor.submit(_send_text_reply, phone,
-                             "Great! Let's get you booked in. Please share your *Name*:", socketio)
+                             "Great! Let's get you booked in. Please share your *Name*:\n\n_(Type menu anytime to start over)_", socketio)
         elif choice == "no":
             reply_contact = state.get("contact", CONTACT)
             del _contact_collection[phone]
             _executor.submit(_send_text_reply, phone,
-                             f"No problem! Feel free to reach us anytime at 📞 {reply_contact}.", socketio)
+                             f"No problem! Feel free to reach us anytime at 📞 {reply_contact}.{_BACK_TO_MENU_HINT}", socketio)
         else:
             # Didn't understand the reply — re-ask rather than silently
             # dropping into the collection flow (or out of it) on a guess.
@@ -1257,13 +1318,13 @@ def _handle_contact_collection(phone, text, socketio):
         _contact_collection[phone]["name"] = text
         _contact_collection[phone]["step"] = "awaiting_mobile"
         _executor.submit(_send_text_reply, phone,
-                         "Thank you! Please share your *Mobile Number*:", socketio)
+                         "Thank you! Please share your *Mobile Number*:\n\n_(Type menu anytime to start over)_", socketio)
 
     elif step == "awaiting_mobile":
         _contact_collection[phone]["mobile"] = text
         _contact_collection[phone]["step"] = "awaiting_time"
         _executor.submit(_send_text_reply, phone,
-                         "Great! What is the *Best Time to Call* you?\n_(e.g. Morning, Afternoon, Evening or a specific time)_", socketio)
+                         "Great! What is the *Best Time to Call* you?\n_(e.g. Morning, Afternoon, Evening or a specific time)_\n\n_(Type menu anytime to start over)_", socketio)
 
     elif step == "awaiting_time":
         name = state.get("name", "")
@@ -1277,6 +1338,7 @@ def _handle_contact_collection(phone, text, socketio):
             f"✅ *Thank you, {name}!*\n\n"
             f"Our team will contact you at *{mobile}* during *{best_time}*.\n\n"
             f"If urgent, you can also reach us at:\n📞 {reply_contact}"
+            f"{_BACK_TO_MENU_HINT}"
         )
         _executor.submit(_send_text_reply, phone, confirmation, socketio)
         _user_context[phone] = "main"
@@ -1304,6 +1366,28 @@ def _handle_contact_collection(phone, text, socketio):
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         })
         log.info(f"Consultation booked: {name} ({mobile}) — best time: {best_time}")
+
+
+def _send_greeting_reply(phone, socketio):
+    """Sends the greeting as 3 tappable buttons (Business Services /
+    Legal Services / Full Menu) so the customer can pick with a tap
+    instead of typing bizservices/lawservices/menu by hand. Falls back
+    to the plain-text GREETING_REPLY (still spelling out those three
+    typed options) if the interactive send fails for any reason."""
+    try:
+        success, wa_id = send_greeting_buttons(phone, GREETING_REPLY_WITH_BUTTONS)
+        if success:
+            # Log the plain base text against this phone in the
+            # dashboard's message history — GREETING_REPLY_WITH_BUTTONS's
+            # "select below" only means something next to the buttons
+            # that were actually attached, not as a standalone log line.
+            save_message(phone, GREETING_REPLY, "bot", socketio,
+                         status="sent", whatsapp_message_id=wa_id, source="ai")
+        else:
+            _send_text_reply(phone, GREETING_REPLY, socketio)
+    except Exception as e:
+        log.error(f"Greeting reply error for {phone}: {e}")
+        _send_text_reply(phone, GREETING_REPLY, socketio)
 
 
 def _send_welcome_menu(phone, socketio, source=None):

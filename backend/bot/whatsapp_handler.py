@@ -161,6 +161,44 @@ def send_main_menu(to: str, source: str = None):
         return False, None
 
 
+def send_greeting_buttons(to: str, body_text: str):
+    """Sends the plain-greeting reply as 3 tappable quick-reply buttons
+    (Business Services / Legal Services / Full Menu) instead of relying
+    on the customer to type bizservices / lawservices / menu out by
+    hand. Same interactive 'button' payload shape as send_service_menu,
+    just with no header and the greeting text as the body."""
+    if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
+        return False, None
+    try:
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "interactive",
+            "interactive": {
+                "type": "button",
+                "body": {"text": body_text},
+                "action": {
+                    "buttons": [
+                        {"type": "reply", "reply": {"id": "greet_biz", "title": "Business Services"}},
+                        {"type": "reply", "reply": {"id": "greet_law", "title": "Legal Services"}},
+                        {"type": "reply", "reply": {"id": "greet_menu", "title": "Full Menu"}},
+                    ]
+                }
+            }
+        }
+        res = _session.post(
+            f"{WA_BASE}/{PHONE_NUMBER_ID}/messages",
+            headers=_headers(), json=payload, timeout=10,
+        )
+        if res.status_code == 200:
+            return True, res.json().get("messages", [{}])[0].get("id")
+        _handle_wa_error(res.status_code, res.text, f"send_greeting_buttons to {to}")
+        return False, None
+    except Exception as e:
+        print(f"send_greeting_buttons error: {e}")
+        return False, None
+
+
 def send_service_menu(to: str, service_id: str):
     menus = {
         "online_nikah":   {"header": "Online Marriage / Nikah",      "body": "What would you like to know?", "buttons": [{"id": "nikah_procedure", "title": "Procedure"}, {"id": "nikah_documents", "title": "Documents"}, {"id": "nikah_consult", "title": "Talk to Lawyer"}]},
@@ -184,7 +222,7 @@ def send_service_menu(to: str, service_id: str):
             "interactive": {
                 "type": "button",
                 "header": {"type": "text", "text": menu["header"]},
-                "body": {"text": menu["body"]},
+                "body": {"text": menu["body"] + "\n\n🔙 Type *menu* anytime to return to the main menu."},
                 "action": {
                     "buttons": [
                         {"type": "reply", "reply": {"id": btn["id"], "title": btn["title"]}}
