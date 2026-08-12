@@ -16,7 +16,10 @@ from models.message import save_message, update_message_status
 import models.consultation as consultation_model
 from models.database import get_db
 from bot.ai_client import ask_ai
-from bot.whatsapp_handler import send_text, send_main_menu, send_service_menu, send_greeting_buttons
+from bot.whatsapp_handler import (
+    send_text, send_main_menu, send_service_menu, send_greeting_buttons,
+    send_nav_buttons,
+)
 from utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -43,6 +46,19 @@ MAX_PROCESSED_IDS = 10000
 _user_service_context = {}
 _contact_collection = {}   # phone -> {"step": "awaiting_name"/"awaiting_mobile"/"awaiting_time", "name": ..., "mobile": ...}
 _user_context = {}         # phone -> "main" once a consultation flow completes (kept for future use)
+
+# Which SCREEN (category id or leaf id) this phone is actually looking
+# at right now, updated every time we send a category list or a leaf
+# answer. This is what makes the tap-only 🔙 Back button on any given
+# screen resolve to the right place without the customer (or the code
+# elsewhere) needing to track a full path:
+#   - current screen is a leaf id (has an entry in LEAF_PARENT) ->
+#     Back re-sends that leaf's parent category list.
+#   - current screen is anything else (a category id, or nothing) ->
+#     Back behaves exactly like Main Menu, since every category sits
+#     directly one level below the main menu.
+# See _handle_nav_back / _handle_nav_main below.
+_user_current_screen = {}
 
 # Which menu variant was actually last SHOWN to this phone number —
 # None/"biz"/"law", same vocabulary as `source`. This is deliberately
@@ -287,9 +303,11 @@ BUTTON_RESPONSES = {
 
 # ── "Back to menu" hint ───────────────────────────────────────────────────
 # Appended to every leaf response so a customer reading any single
-# service's answer can jump straight back to the main menu by typing
-# *menu* — instead of having to remember the word on their own or
-# re-walk the whole numbered sequence to get back to where they started.
+# service's answer VIA THE TEXT/NUMBER FALLBACK PATH (see
+# _extract_menu_selection below) can jump straight back to the main
+# menu by typing *menu*. Customers who tap their way here instead get
+# real Back / Main Menu buttons via send_nav_buttons and never see this
+# hint — see _strip_back_hint / _send_leaf_reply.
 _BACK_TO_MENU_HINT = "\n\n🔙 Type *menu* anytime to return to the main menu."
 
 
@@ -308,6 +326,17 @@ def _add_back_to_menu_hint(d: dict) -> dict:
 
 
 _add_back_to_menu_hint(BUTTON_RESPONSES)
+
+
+def _strip_back_hint(text: str) -> str:
+    """Removes the typed-'menu' hint before sending a leaf answer via
+    real nav buttons — the hint exists for the text-fallback path only;
+    showing it alongside actual Back/Main Menu buttons would be
+    redundant and confusing."""
+    if text.endswith(_BACK_TO_MENU_HINT):
+        return text[: -len(_BACK_TO_MENU_HINT)]
+    return text
+
 
 TEXT_SUB_MENU = {
     "online_nikah":   "You selected *Online Marriage / Online Nikah* 🕌\n\nReply with:\n1️⃣ Procedure\n2️⃣ Documents\n3️⃣ Talk to a Lawyer",
@@ -389,14 +418,11 @@ BIZ_SUB_MENU = {
 }
 
 # Which numbered choice means "back to main menu" on each of the 4
-# BizAdvise sub-menus above. Only these get a NUMBERED back option —
-# Meta's interactive "button" messages cap out at 3 buttons, so the
-# 3-option sub-menus elsewhere (Nikah, Divorce, etc., sent via
-# send_service_menu's button payload) can't take a 4th tappable button
-# without breaking that limit; they keep only the "type *menu*" text
-# hint instead. These 4, by contrast, already have more than 3 options
-# and are sent as plain numbered text (see _send_service_menu_safe's
-# fallback), where an extra numbered line costs nothing.
+# BizAdvise sub-menus above — used by the TEXT/NUMBER fallback path
+# only. The interactive list version of these same screens (see
+# send_service_menu in whatsapp_handler.py) carries its own tappable
+# "🔙 Back to Main Menu" row with a stable "nav_main" id instead, so
+# this numbering only matters for someone still typing digits by hand.
 _BACK_TO_MAIN_MENU_OPTION = {
     "biz_business": "9",
     "biz_tax": "11",
@@ -485,11 +511,74 @@ ALL_SUB_RESPONSES = {**TEXT_SUB_RESPONSES, **BIZ_SUB_RESPONSES}
 SERVICE_MENU_IDS = set(ALL_SUB_MENUS.keys())
 BIZ_DIRECT_IDS = {"biz_ngo", "biz_digital", "biz_urgent", "biz_consult", "contact_us"}
 
+# ── Leaf-screen id space (tap-only navigation) ───────────────────────────
+# Every leaf answer reachable by TAPPING a row inside a category list
+# needs a stable id so a list_reply can be routed straight to its text
+# AND so 🔙 Back (see _handle_nav_back) knows which category to return
+# to. The Law leaf ids already exist as keys in BUTTON_RESPONSES
+# ("nikah_procedure", "divorce_timeline", ...) — this just adds the
+# equivalent ids for the Biz leaves, which previously only existed as
+# BIZ_SUB_RESPONSES[category][number] (meaningful only to the numbered
+# TEXT fallback, not tappable on their own).
+BIZ_LEAF_RESPONSES = {}
+for _biz_cat, _biz_items in BIZ_SUB_RESPONSES.items():
+    for _num, _leaf_text in _biz_items.items():
+        BIZ_LEAF_RESPONSES[f"{_biz_cat}_{_num}"] = _leaf_text
+
+# leaf id -> the category id it belongs to, i.e. what 🔙 Back re-sends.
+# Ids with NO entry here (e.g. biz_ngo, biz_digital, contact_us — the
+# top-level items hanging directly off the main menu, not nested inside
+# a category) fall through in _handle_nav_back to "Back == Main Menu",
+# which is exactly correct for them too.
+LEAF_PARENT = {
+    # Law leaves
+    "nikah_procedure": "online_nikah", "nikah_documents": "online_nikah", "nikah_consult": "online_nikah",
+    "court_procedure": "court_marriage", "court_documents": "court_marriage", "court_consult": "court_marriage",
+    "divorce_procedure": "divorce_khula", "divorce_timeline": "divorce_khula", "divorce_consult": "divorce_khula",
+    "custody_procedure": "child_custody", "custody_timeline": "child_custody", "custody_consult": "child_custody",
+    "maintenance_procedure": "maintenance", "maintenance_timeline": "maintenance", "maintenance_consult": "maintenance",
+    "property_procedure": "property_law", "property_timeline": "property_law", "property_consult": "property_law",
+    "inheritance_procedure": "inheritance", "inheritance_timeline": "inheritance", "inheritance_consult": "inheritance",
+    "corporate_procedure": "corporate_law", "corporate_timeline": "corporate_law", "corporate_consult": "corporate_law",
+    "docs_procedure": "legal_docs", "docs_timeline": "legal_docs", "docs_consult": "legal_docs",
+    # Biz leaves
+    **{f"biz_business_{i}": "biz_business" for i in range(1, 9)},
+    **{f"biz_tax_{i}": "biz_tax" for i in range(1, 10)},
+    **{f"biz_accounts_{i}": "biz_accounts" for i in range(1, 8)},
+    **{f"biz_legal_{i}": "biz_legal" for i in range(1, 9)},
+}
+
+# All tap-reachable leaf ids -> their response text, Law + Biz combined.
+LEAF_RESPONSES = {**BUTTON_RESPONSES, **BIZ_LEAF_RESPONSES}
+
+# Short titles for the Biz leaves — mirrors the row titles used in
+# whatsapp_handler.py's _BIZ_CATEGORY_ITEMS, kept here too so
+# SERVICE_LABELS (used on consultation records and leaf-screen headers)
+# has a sensible label instead of the raw "biz_tax_1" id.
+_BIZ_LEAF_TITLES = {
+    "biz_business_1": "Private Ltd/SMC/LLC", "biz_business_2": "Partnership / AOP",
+    "biz_business_3": "Proprietorship", "biz_business_4": "Trademark Registration",
+    "biz_business_5": "Copyright Registration", "biz_business_6": "Patent Registration",
+    "biz_business_7": "Other Registrations", "biz_business_8": "Talk to an Expert",
+    "biz_tax_1": "NTN - Individual", "biz_tax_2": "NTN - Business",
+    "biz_tax_3": "Income Tax Return", "biz_tax_4": "Sales Tax Registration",
+    "biz_tax_5": "Sales Tax Monthly Return", "biz_tax_6": "Provincial Sales Tax",
+    "biz_tax_7": "ATL Status", "biz_tax_8": "Tax Notices", "biz_tax_9": "Tax Refund",
+    "biz_accounts_1": "Bookkeeping", "biz_accounts_2": "Annual Accounts Mgmt",
+    "biz_accounts_3": "Audited Accounts", "biz_accounts_4": "Internal & External Audit",
+    "biz_accounts_5": "Financial Reporting", "biz_accounts_6": "Accounting Consultation",
+    "biz_accounts_7": "Talk to an Expert",
+    "biz_legal_1": "Contract Drafting", "biz_legal_2": "Corporate Compliance",
+    "biz_legal_3": "Legal Notices", "biz_legal_4": "Legal Opinions",
+    "biz_legal_5": "Regulatory Compliance", "biz_legal_6": "Company Secretarial Services",
+    "biz_legal_7": "Legal Consultation", "biz_legal_8": "Talk to an Expert",
+}
+
 # ── Messages that mean "we've asked the user to share their contact info" ──
-# _send_text_reply checks against this set after every send; a match kicks
-# off the Name -> Mobile -> Best Time collection flow below, regardless of
-# which menu path (main menu, sub-menu number, or an interactive tap) led
-# there — they all funnel through _send_text_reply eventually.
+# _send_text_reply / _send_leaf_reply check against this set after every
+# send; a match kicks off the Name -> Mobile -> Best Time collection flow
+# below, regardless of which path (typed number, tapped list row, or
+# tapped button) led there.
 # "Book Consultation" labeled paths — the customer already explicitly
 # chose to book, so go straight into the Name -> Mobile -> Best Time
 # collection flow, same as before.
@@ -722,11 +811,18 @@ _LEAF_SERVICE_ALIAS = {
 for _leaf_id, _parent_id in _LEAF_SERVICE_ALIAS.items():
     SERVICE_LABELS[_leaf_id] = SERVICE_LABELS.get(_parent_id, _leaf_id)
 
+# Same idea for the Biz leaves, using their own short titles rather than
+# aliasing to the parent category (a Biz leaf's title is informative on
+# its own, e.g. "NTN - Individual", unlike the generic Law "Procedure").
+for _biz_leaf_id, _biz_leaf_title in _BIZ_LEAF_TITLES.items():
+    SERVICE_LABELS.setdefault(_biz_leaf_id, _biz_leaf_title)
+
 
 def _service_brand(service_id: str) -> str:
     if not service_id:
         return ""
     canonical = _LEAF_SERVICE_ALIAS.get(service_id, service_id)
+    canonical = LEAF_PARENT.get(canonical, canonical)
     if canonical in _BIZ_SERVICE_IDS:
         return "biz"
     if canonical == "contact_us":
@@ -743,6 +839,32 @@ def _service_menu_map(source: str) -> dict:
     if source == "law":
         return TEXT_SERVICE_MENUS_LAW
     return TEXT_SERVICE_MENUS
+
+
+def _resolve_menu_source(phone: str, source: str):
+    """Which brand a 'menu' request (typed 'menu', or the numbered
+    'Back to Main Menu' option inside a submenu) should show.
+
+    Prefers _user_menu_view — whichever menu this phone was ACTUALLY
+    just looking at — over the permanently-locked ad `source`. Without
+    this, a LawAdvise-ad customer who navigates into BizAdvise's
+    Taxation submenu (via 'full menu' / 'See All Services') and then
+    types 'menu' gets yanked back to the LawAdvise menu instead of
+    staying in the BizAdvise context they were actually just in —
+    jarring, and it also desyncs their next numbered reply (e.g. a
+    submenu's own "11 Back to Main Menu" option) since that number no
+    longer means anything on the menu they land on. This mirrors the
+    exact same reasoning already used for interpreting numeric
+    selections (see `active_view` a few lines below in _handle_message).
+
+    Falls back to the locked `source` only when nothing's been shown
+    yet this session — e.g. the very first "menu" this process has
+    handled for this phone, or right after a server restart clears
+    _user_menu_view — so an ad-sourced customer's first-ever "menu"
+    request still lands on their own brand, same as before.
+    """
+    menu_source = _user_menu_view.get(phone, source)
+    return menu_source if menu_source in ("biz", "law") else None
 
 
 MENU_TRIGGERS = {
@@ -1067,6 +1189,7 @@ def _handle_message(msg, socketio, name=""):
         _user_service_context.pop(phone, None)
         _contact_collection.pop(phone, None)
         _user_menu_view[phone] = source
+        _user_current_screen.pop(phone, None)
         _executor.submit(_send_welcome_menu, phone, socketio, source)
 
     if msg_type == "text":
@@ -1096,16 +1219,19 @@ def _handle_message(msg, socketio, name=""):
                 # that's an explicit signal, so go straight to that brand's
                 # menu rather than making them ask for it.
                 _user_menu_view[phone] = source
+                _user_current_screen.pop(phone, None)
                 _executor.submit(_send_welcome_menu, phone, socketio, source)
                 return
 
             if text_lower in BIZ_MENU_TRIGGERS:
                 _user_menu_view[phone] = "biz"
+                _user_current_screen.pop(phone, None)
                 _executor.submit(_send_welcome_menu, phone, socketio, "biz")
                 return
 
             if text_lower in LAW_MENU_TRIGGERS:
                 _user_menu_view[phone] = "law"
+                _user_current_screen.pop(phone, None)
                 _executor.submit(_send_welcome_menu, phone, socketio, "law")
                 return
 
@@ -1121,6 +1247,7 @@ def _handle_message(msg, socketio, name=""):
             # or free text that isn't a greeting/trigger) — fall back to
             # the original behavior and show the combined/brand menu.
             _user_menu_view[phone] = source
+            _user_current_screen.pop(phone, None)
             _executor.submit(_send_welcome_menu, phone, socketio, source)
             return
 
@@ -1130,23 +1257,30 @@ def _handle_message(msg, socketio, name=""):
             _user_service_context.pop(phone, None)
             _contact_collection.pop(phone, None)
             _user_menu_view[phone] = None
+            _user_current_screen.pop(phone, None)
             _executor.submit(_send_welcome_menu, phone, socketio, None)
             return
 
         if text_lower in MENU_TRIGGERS:
             # An explicit "menu" request is a different signal than the
             # passive first-touch welcome — the person is actively asking
-            # what's available. For an ad-sourced phone number, that means
-            # THEIR brand's menu again (a LawAdvise-ad customer typing
-            # "menu" should land back on LawAdvise services, not the
-            # combined BizAdvise+LawAdvise list). Organic/unknown-source
-            # users still get the combined menu, since there's no single
-            # brand to send them back to. Anyone who wants the full
-            # combined list on purpose can ask via FULL_MENU_TRIGGERS above.
+            # what's available. Uses _resolve_menu_source, which prefers
+            # whichever menu they were actually just looking at over
+            # their permanently-locked ad `source` — e.g. a LawAdvise-ad
+            # customer who navigated into BizAdvise's Taxation submenu
+            # via "full menu" stays in that BizAdvise context on "menu",
+            # rather than being snapped back to LawAdvise just because
+            # that's the ad they originally clicked. First-ever "menu"
+            # this session still falls back to their locked source, so
+            # ad attribution still matters — see _resolve_menu_source's
+            # docstring for the full reasoning. Anyone who wants the
+            # full combined list on purpose can ask via FULL_MENU_TRIGGERS
+            # above.
             _user_service_context.pop(phone, None)
             _contact_collection.pop(phone, None)
-            menu_source = source if source in ("biz", "law") else None
+            menu_source = _resolve_menu_source(phone, source)
             _user_menu_view[phone] = menu_source
+            _user_current_screen.pop(phone, None)
             _executor.submit(_send_welcome_menu, phone, socketio, menu_source)
             return
 
@@ -1154,6 +1288,7 @@ def _handle_message(msg, socketio, name=""):
             _user_service_context.pop(phone, None)
             _contact_collection.pop(phone, None)
             _user_menu_view[phone] = "biz"
+            _user_current_screen.pop(phone, None)
             _executor.submit(_send_welcome_menu, phone, socketio, "biz")
             return
 
@@ -1161,6 +1296,7 @@ def _handle_message(msg, socketio, name=""):
             _user_service_context.pop(phone, None)
             _contact_collection.pop(phone, None)
             _user_menu_view[phone] = "law"
+            _user_current_screen.pop(phone, None)
             _executor.submit(_send_welcome_menu, phone, socketio, "law")
             return
 
@@ -1177,10 +1313,19 @@ def _handle_message(msg, socketio, name=""):
             service = _user_service_context[phone]
             selection = _extract_menu_selection(text)
             if selection and selection == _BACK_TO_MAIN_MENU_OPTION.get(service):
+                # Same resolution as typed "menu" — stay in whichever
+                # brand's menu they were actually just navigating
+                # (_user_menu_view), not hardcoded to the combined menu.
+                # Previously this always forced the combined menu even
+                # for an ad-sourced customer who'd been shown (and was
+                # backing out of) a single-brand submenu, which put them
+                # somewhere they hadn't asked to be.
                 del _user_service_context[phone]
                 _contact_collection.pop(phone, None)
-                _user_menu_view[phone] = None
-                _executor.submit(_send_welcome_menu, phone, socketio, None)
+                menu_source = _resolve_menu_source(phone, source)
+                _user_menu_view[phone] = menu_source
+                _user_current_screen.pop(phone, None)
+                _executor.submit(_send_welcome_menu, phone, socketio, menu_source)
                 return
             response = ALL_SUB_RESPONSES.get(service, {}).get(selection) if selection else None
             if response:
@@ -1208,10 +1353,12 @@ def _handle_message(msg, socketio, name=""):
             title, service_id = service_menu_map[selection]
             if service_id in SERVICE_MENU_IDS:
                 _user_service_context[phone] = service_id
+                _user_current_screen[phone] = service_id
                 _executor.submit(_send_service_menu_safe, phone, service_id, socketio)
             elif service_id in BIZ_DIRECT_IDS:
                 response = BUTTON_RESPONSES.get(service_id, "")
                 if response:
+                    _user_current_screen[phone] = service_id
                     _executor.submit(_send_text_reply, phone, response, socketio, service_id)
             return
 
@@ -1230,6 +1377,7 @@ def _handle_message(msg, socketio, name=""):
             selected_title = interactive["list_reply"]["title"]
             save_message(phone, selected_title, "user", socketio,
                          status="delivered", whatsapp_message_id=msg_id)
+
             if selected_id == "show_full_menu":
                 # Tapped the "See All Services" row appended to a
                 # single-brand menu — same as typing a FULL_MENU_TRIGGERS
@@ -1238,20 +1386,55 @@ def _handle_message(msg, socketio, name=""):
                 _user_service_context.pop(phone, None)
                 _contact_collection.pop(phone, None)
                 _user_menu_view[phone] = None
+                _user_current_screen.pop(phone, None)
                 _executor.submit(_send_welcome_menu, phone, socketio, None)
+
+            elif selected_id == "nav_main":
+                # Tapped the "🏠 Main Menu" (or single-row "🔙 Back to
+                # Main Menu" on a Biz category list) — always jumps home.
+                _handle_nav_main(phone, socketio, source)
+
+            elif selected_id == "nav_back":
+                # Tapped "🔙 Back" inside a Law category list (5-row
+                # version) — one tier below main, so this behaves the
+                # same as nav_main here; kept distinct from the leaf
+                # 🔙 Back case below only for symmetry with the diagram.
+                _handle_nav_back(phone, socketio, source)
+
             elif selected_id in BIZ_DIRECT_IDS:
                 response = BUTTON_RESPONSES.get(selected_id, "")
                 if response:
-                    _executor.submit(_send_text_reply, phone, response, socketio, selected_id)
+                    _user_current_screen[phone] = selected_id
+                    _executor.submit(_send_leaf_reply, phone, response, socketio, selected_id, None)
+
             elif selected_id in SERVICE_MENU_IDS:
+                # Tapped a category row on the main menu list.
                 _user_service_context[phone] = selected_id
+                _user_current_screen[phone] = selected_id
                 _executor.submit(_send_service_menu_safe, phone, selected_id, socketio)
+
+            elif selected_id in LEAF_RESPONSES:
+                # Tapped a content row inside a category list (e.g.
+                # "divorce_procedure" or "biz_tax_1") — send the leaf
+                # answer with its own Back/Main Menu buttons.
+                response = LEAF_RESPONSES[selected_id]
+                parent = LEAF_PARENT.get(selected_id)
+                _user_current_screen[phone] = selected_id
+                _executor.submit(_send_leaf_reply, phone, response, socketio, selected_id, parent)
 
         elif interactive_type == "button_reply":
             button_id = interactive["button_reply"]["id"]
             button_title = interactive["button_reply"]["title"]
             save_message(phone, button_title, "user", socketio,
                          status="delivered", whatsapp_message_id=msg_id)
+
+            if button_id == "nav_main":
+                _handle_nav_main(phone, socketio, source)
+                return
+
+            if button_id == "nav_back":
+                _handle_nav_back(phone, socketio, source)
+                return
 
             if button_id in ("greet_biz", "greet_law", "greet_menu"):
                 # Tapped one of the 3 greeting quick-reply buttons —
@@ -1261,20 +1444,29 @@ def _handle_message(msg, socketio, name=""):
                 _contact_collection.pop(phone, None)
                 menu_source = {"greet_biz": "biz", "greet_law": "law", "greet_menu": None}[button_id]
                 _user_menu_view[phone] = menu_source
+                _user_current_screen.pop(phone, None)
                 _executor.submit(_send_welcome_menu, phone, socketio, menu_source)
                 return
 
             if button_id in SERVICE_MENU_IDS:
+                # Legacy path — kept in case a customer still has an old
+                # 3-button category message on screen from before this
+                # rollout.
                 _user_service_context[phone] = button_id
+                _user_current_screen[phone] = button_id
                 _executor.submit(_send_service_menu_safe, phone, button_id, socketio)
                 return
-            response = BUTTON_RESPONSES.get(button_id)
-            if response:
-                _executor.submit(_send_text_reply, phone, response, socketio, button_id)
-            else:
-                mode = get_user_mode(phone)
-                if mode == 0:
-                    _executor.submit(_process_ai_reply, phone, button_title, socketio)
+
+            if button_id in LEAF_RESPONSES:
+                response = LEAF_RESPONSES[button_id]
+                parent = LEAF_PARENT.get(button_id)
+                _user_current_screen[phone] = button_id
+                _executor.submit(_send_leaf_reply, phone, response, socketio, button_id, parent)
+                return
+
+            mode = get_user_mode(phone)
+            if mode == 0:
+                _executor.submit(_process_ai_reply, phone, button_title, socketio)
 
     elif msg_type in ("image", "audio", "document", "video"):
         media_info = msg.get(msg_type, {})
@@ -1338,6 +1530,37 @@ def _handle_message(msg, socketio, name=""):
                      message_type=msg_type)
 
 
+def _handle_nav_main(phone, socketio, source):
+    """🏠 Main Menu — always jumps straight home, skipping however deep
+    the customer had navigated. Same brand-resolution as a typed
+    'menu' (see _resolve_menu_source): stays on whichever brand they
+    were actually just looking at."""
+    _user_service_context.pop(phone, None)
+    _contact_collection.pop(phone, None)
+    menu_source = _resolve_menu_source(phone, source)
+    _user_menu_view[phone] = menu_source
+    _user_current_screen.pop(phone, None)
+    _executor.submit(_send_welcome_menu, phone, socketio, menu_source)
+
+
+def _handle_nav_back(phone, socketio, source):
+    """🔙 Back — "one screen up", resolved from _user_current_screen:
+      - currently on a LEAF answer -> re-send its parent category list
+        (and update the tracked screen back to that category).
+      - currently on anything else (a category list, or we've lost
+        track of where they were) -> behaves exactly like Main Menu,
+        since every category sits directly one level below the main
+        menu — there's nowhere else "up" to go."""
+    current = _user_current_screen.get(phone)
+    parent = LEAF_PARENT.get(current) if current else None
+    if parent:
+        _user_service_context[phone] = parent
+        _user_current_screen[phone] = parent
+        _executor.submit(_send_service_menu_safe, phone, parent, socketio)
+    else:
+        _handle_nav_main(phone, socketio, source)
+
+
 def _handle_contact_collection(phone, text, socketio):
     """Walks a user through an optional callback-choice step (for the
     more ambiguous 'Talk to Expert' paths), then Name -> Mobile -> Best
@@ -1358,18 +1581,22 @@ def _handle_contact_collection(phone, text, socketio):
         del _contact_collection[phone]
         _user_service_context.pop(phone, None)
         _user_menu_view[phone] = None
+        _user_current_screen.pop(phone, None)
         _executor.submit(_send_welcome_menu, phone, socketio, None)
         return
 
     if text_lower in MENU_TRIGGERS:
-        # Plain "menu" bails back to THIS phone's own brand menu (if
-        # ad-sourced) rather than the combined one — same reasoning as
-        # the MENU_TRIGGERS branch in _handle_message.
+        # Same resolution as the MENU_TRIGGERS branch in _handle_message —
+        # prefers whichever menu this phone was actually last shown
+        # (_user_menu_view) over their permanently-locked ad `source`,
+        # falling back to `source` only if nothing's been shown yet
+        # this session. See _resolve_menu_source's docstring.
         del _contact_collection[phone]
         _user_service_context.pop(phone, None)
         source = get_user_source(phone)
-        menu_source = source if source in ("biz", "law") else None
+        menu_source = _resolve_menu_source(phone, source)
         _user_menu_view[phone] = menu_source
+        _user_current_screen.pop(phone, None)
         _executor.submit(_send_welcome_menu, phone, socketio, menu_source)
         return
 
@@ -1529,7 +1756,11 @@ def _send_text_reply(phone, text, socketio, service_id=None):
     since by the time a background thread gets around to running this,
     _user_service_context[phone] may already have been cleared for the
     next message. Only matters for the two branches below that kick off
-    a consultation lead; ignored otherwise."""
+    a consultation lead; ignored otherwise.
+
+    Used for the TEXT/NUMBER fallback path and for internal booking-flow
+    prompts (Name/Mobile/Best-Time). Interactive taps use
+    _send_leaf_reply instead, which attaches real nav buttons."""
     try:
         success, wa_id = send_text(phone, text)
         save_message(phone, text, "bot", socketio,
@@ -1571,6 +1802,50 @@ def _send_text_reply(phone, text, socketio, service_id=None):
             }
     except Exception as e:
         log.error(f"Text reply error for {phone}: {e}")
+
+
+def _send_leaf_reply(phone, text, socketio, leaf_id, parent_category):
+    """Sends a leaf answer reached by TAPPING (a list row or, for the
+    legacy BIZ_DIRECT_IDS top-level items, a button) as a 2-button
+    message: 🔙 Back (re-sends parent_category's list, or acts like
+    Main Menu if parent_category is None — see _handle_nav_back) and
+    🏠 Main Menu.
+
+    `text` still carries the typed-'menu' hint (_BACK_TO_MENU_HINT)
+    since it's shared with the text-fallback dicts — stripped only for
+    display here since real buttons make the hint redundant. Consult-
+    flow detection below matches against the original `text`, not the
+    stripped version, so it stays in sync with CONSULT_TRIGGER_TEXTS /
+    _is_consult_choice_prompt regardless of stripping."""
+    try:
+        header = SERVICE_LABELS.get(parent_category) or SERVICE_LABELS.get(leaf_id, "")
+        body = _strip_back_hint(text)
+        success, wa_id = send_nav_buttons(phone, header, body)
+        save_message(phone, body, "bot", socketio,
+                     status="sent" if success else "failed",
+                     whatsapp_message_id=wa_id, source="ai")
+        if not success:
+            return
+        service_label = SERVICE_LABELS.get(leaf_id) or SERVICE_LABELS.get(parent_category, "")
+        brand = _service_brand(leaf_id) or _service_brand(parent_category)
+        if text in CONSULT_TRIGGER_TEXTS:
+            lead_id = consultation_model.create_lead(phone, leaf_id or "", service_label, brand or "law")
+            _contact_collection[phone] = {
+                "step": "awaiting_name",
+                "contact": LAW_CONTACT,
+                "consultation_id": lead_id,
+                "service_label": service_label,
+            }
+        elif _is_consult_choice_prompt(text):
+            lead_id = consultation_model.create_lead(phone, leaf_id or "", service_label, brand)
+            _contact_collection[phone] = {
+                "step": "awaiting_callback_choice",
+                "contact": LAW_CONTACT if LAW_CONTACT in text else CONTACT,
+                "consultation_id": lead_id,
+                "service_label": service_label,
+            }
+    except Exception as e:
+        log.error(f"Leaf reply error for {phone}: {e}")
 
 
 def _process_ai_reply(phone, text, socketio):

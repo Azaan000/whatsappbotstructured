@@ -177,7 +177,7 @@ def send_greeting_buttons(to: str, body_text: str):
     """Sends the plain-greeting reply as 3 tappable quick-reply buttons
     (Business Services / Legal Services / Full Menu) instead of relying
     on the customer to type bizservices / lawservices / menu out by
-    hand. Same interactive 'button' payload shape as send_service_menu,
+    hand. Same interactive 'button' payload shape as send_nav_buttons,
     just with no header and the greeting text as the body."""
     if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
         return False, None
@@ -211,20 +211,158 @@ def send_greeting_buttons(to: str, body_text: str):
         return False, None
 
 
-def send_service_menu(to: str, service_id: str):
-    menus = {
-        "online_nikah":   {"header": "Online Marriage / Nikah",      "body": "What would you like to know?", "buttons": [{"id": "nikah_procedure", "title": "Procedure"}, {"id": "nikah_documents", "title": "Documents"}, {"id": "nikah_consult", "title": "Talk to Lawyer"}]},
-        "court_marriage": {"header": "Court Marriage",                "body": "What would you like to know?", "buttons": [{"id": "court_procedure", "title": "Procedure"}, {"id": "court_documents", "title": "Documents"}, {"id": "court_consult", "title": "Book Consultation"}]},
-        "divorce_khula":  {"header": "Divorce / Khula",               "body": "What would you like to know?", "buttons": [{"id": "divorce_procedure", "title": "Procedure"}, {"id": "divorce_timeline", "title": "Timeline"}, {"id": "divorce_consult", "title": "Book Consultation"}]},
-        "child_custody":  {"header": "Child Custody / Guardianship",  "body": "What would you like to know?", "buttons": [{"id": "custody_procedure", "title": "Procedure"}, {"id": "custody_timeline", "title": "Timeline"}, {"id": "custody_consult", "title": "Talk to Expert"}]},
-        "maintenance":    {"header": "Maintenance / Dowery",          "body": "What would you like to know?", "buttons": [{"id": "maintenance_procedure", "title": "Procedure"}, {"id": "maintenance_timeline", "title": "Timeline"}, {"id": "maintenance_consult", "title": "Talk to Expert"}]},
-        "property_law":   {"header": "Property Law",                  "body": "What would you like to know?", "buttons": [{"id": "property_procedure", "title": "Procedure"}, {"id": "property_timeline", "title": "Timeline"}, {"id": "property_consult", "title": "Book Consultation"}]},
-        "inheritance":    {"header": "Inheritance",                   "body": "What would you like to know?", "buttons": [{"id": "inheritance_procedure", "title": "Procedure"}, {"id": "inheritance_timeline", "title": "Timeline"}, {"id": "inheritance_consult", "title": "Talk to Expert"}]},
-        "corporate_law":  {"header": "Corporate Law",                 "body": "What would you like to know?", "buttons": [{"id": "corporate_procedure", "title": "Procedure"}, {"id": "corporate_timeline", "title": "Timeline"}, {"id": "corporate_consult", "title": "Talk to Expert"}]},
-        "legal_docs":     {"header": "Legal Documentation",           "body": "What would you like to know?", "buttons": [{"id": "docs_procedure", "title": "Procedure"}, {"id": "docs_timeline", "title": "Timeline"}, {"id": "docs_consult", "title": "Book Consultation"}]},
-    }
-    menu = menus.get(service_id)
-    if not menu:
+# ── Category screens (tier 2 — one level below the main menu) ───────────
+# Every category is a WhatsApp *list* message now, never a 3-button
+# message, because a button message caps out at 3 buttons and every
+# category needs room for nav rows on top of its own content:
+#
+#   LawAdvise categories (only 3 content items each) get BOTH a Back
+#   row and a Main Menu row — 5 rows total, plenty of headroom under
+#   the list format's 10-row cap. Back and Main Menu happen to lead to
+#   the same place here (the category sits directly under the main
+#   menu), but both are shown anyway so every screen in the whole tree
+#   carries the same two nav options, with no exceptions to remember.
+#
+#   BizAdvise categories (up to 9 content items, e.g. Taxation) only
+#   have room for ONE extra row, so they get a single "Back to Main
+#   Menu" row instead of two — still exactly "home", just one tap.
+#
+# Leaf answers (Procedure, NTN Individual, etc.) are a separate, later
+# screen — see send_nav_buttons — where Back and Main Menu genuinely
+# differ (Back returns to this category list, Main Menu skips straight
+# home), and that fits fine as a 2-button message.
+
+_LAW_CATEGORY_HEADERS = {
+    "online_nikah":   "Online Marriage / Nikah",
+    "court_marriage": "Court Marriage",
+    "divorce_khula":  "Divorce / Khula",
+    "child_custody":  "Child Custody / Guardianship",
+    "maintenance":    "Maintenance / Dowery",
+    "property_law":   "Property Law",
+    "inheritance":    "Inheritance",
+    "corporate_law":  "Corporate Law",
+    "legal_docs":     "Legal Documentation",
+}
+
+_LAW_CATEGORY_ITEMS = {
+    "online_nikah": [
+        {"id": "nikah_procedure", "title": "Procedure"},
+        {"id": "nikah_documents", "title": "Documents"},
+        {"id": "nikah_consult",   "title": "Talk to Lawyer"},
+    ],
+    "court_marriage": [
+        {"id": "court_procedure", "title": "Procedure"},
+        {"id": "court_documents", "title": "Documents"},
+        {"id": "court_consult",   "title": "Book Consultation"},
+    ],
+    "divorce_khula": [
+        {"id": "divorce_procedure", "title": "Procedure"},
+        {"id": "divorce_timeline",  "title": "Timeline"},
+        {"id": "divorce_consult",   "title": "Book Consultation"},
+    ],
+    "child_custody": [
+        {"id": "custody_procedure", "title": "Procedure"},
+        {"id": "custody_timeline",  "title": "Timeline"},
+        {"id": "custody_consult",   "title": "Talk to Expert"},
+    ],
+    "maintenance": [
+        {"id": "maintenance_procedure", "title": "Procedure"},
+        {"id": "maintenance_timeline",  "title": "Timeline"},
+        {"id": "maintenance_consult",   "title": "Talk to Expert"},
+    ],
+    "property_law": [
+        {"id": "property_procedure", "title": "Procedure"},
+        {"id": "property_timeline",  "title": "Timeline"},
+        {"id": "property_consult",   "title": "Book Consultation"},
+    ],
+    "inheritance": [
+        {"id": "inheritance_procedure", "title": "Procedure"},
+        {"id": "inheritance_timeline",  "title": "Timeline"},
+        {"id": "inheritance_consult",   "title": "Talk to Expert"},
+    ],
+    "corporate_law": [
+        {"id": "corporate_procedure", "title": "Procedure"},
+        {"id": "corporate_timeline",  "title": "Timeline"},
+        {"id": "corporate_consult",   "title": "Talk to Expert"},
+    ],
+    "legal_docs": [
+        {"id": "docs_procedure", "title": "Procedure"},
+        {"id": "docs_timeline",  "title": "Timeline"},
+        {"id": "docs_consult",   "title": "Book Consultation"},
+    ],
+}
+
+_BIZ_CATEGORY_HEADERS = {
+    "biz_business": "Business Consultancy",
+    "biz_tax":      "Taxation Services",
+    "biz_accounts": "Accountancy Services",
+    "biz_legal":    "Corporate Legal Advisory",
+}
+
+_BIZ_CATEGORY_ITEMS = {
+    "biz_business": [
+        {"id": "biz_business_1", "title": "Private Ltd/SMC/LLC"},
+        {"id": "biz_business_2", "title": "Partnership / AOP"},
+        {"id": "biz_business_3", "title": "Proprietorship"},
+        {"id": "biz_business_4", "title": "Trademark Registration"},
+        {"id": "biz_business_5", "title": "Copyright Registration"},
+        {"id": "biz_business_6", "title": "Patent Registration"},
+        {"id": "biz_business_7", "title": "Other Registrations"},
+        {"id": "biz_business_8", "title": "Talk to an Expert"},
+    ],
+    "biz_tax": [
+        {"id": "biz_tax_1", "title": "NTN - Individual"},
+        {"id": "biz_tax_2", "title": "NTN - Business"},
+        {"id": "biz_tax_3", "title": "Income Tax Return"},
+        {"id": "biz_tax_4", "title": "Sales Tax Registration"},
+        {"id": "biz_tax_5", "title": "Sales Tax Monthly Rtn"},
+        {"id": "biz_tax_6", "title": "Provincial Sales Tax"},
+        {"id": "biz_tax_7", "title": "ATL Status"},
+        {"id": "biz_tax_8", "title": "Tax Notices"},
+        {"id": "biz_tax_9", "title": "Tax Refund"},
+        # NOTE: no "Talk to an Expert" row here on purpose — Taxation
+        # already has 9 content rows + 1 nav row = 10, the list format's
+        # hard cap. Anyone wanting an expert can reach "Talk to an
+        # Expert" one tap further via the main menu itself.
+    ],
+    "biz_accounts": [
+        {"id": "biz_accounts_1", "title": "Bookkeeping"},
+        {"id": "biz_accounts_2", "title": "Annual Accounts Mgmt"},
+        {"id": "biz_accounts_3", "title": "Audited Accounts"},
+        {"id": "biz_accounts_4", "title": "Internal/External Audit"},
+        {"id": "biz_accounts_5", "title": "Financial Reporting"},
+        {"id": "biz_accounts_6", "title": "Accounting Consultation"},
+        {"id": "biz_accounts_7", "title": "Talk to an Expert"},
+    ],
+    "biz_legal": [
+        {"id": "biz_legal_1", "title": "Contract Drafting"},
+        {"id": "biz_legal_2", "title": "Corporate Compliance"},
+        {"id": "biz_legal_3", "title": "Legal Notices"},
+        {"id": "biz_legal_4", "title": "Legal Opinions"},
+        {"id": "biz_legal_5", "title": "Regulatory Compliance"},
+        {"id": "biz_legal_6", "title": "Company Secretarial"},
+        {"id": "biz_legal_7", "title": "Legal Consultation"},
+        {"id": "biz_legal_8", "title": "Talk to an Expert"},
+    ],
+}
+
+_NAV_BACK_ROW = {"id": "nav_back", "title": "🔙 Back"}
+_NAV_MAIN_ROW = {"id": "nav_main", "title": "🏠 Main Menu"}
+_NAV_MAIN_ONLY_ROW = {"id": "nav_main", "title": "🔙 Back to Main Menu"}
+
+
+def send_service_menu(to: str, category_id: str):
+    """Sends a category screen (tier 2) as a WhatsApp list — the
+    content items belonging to this category, plus nav row(s) at the
+    bottom. See the block comment above for why Law gets 2 nav rows
+    and Biz gets 1."""
+    if category_id in _LAW_CATEGORY_ITEMS:
+        header = _LAW_CATEGORY_HEADERS[category_id]
+        rows = list(_LAW_CATEGORY_ITEMS[category_id]) + [_NAV_BACK_ROW, _NAV_MAIN_ROW]
+    elif category_id in _BIZ_CATEGORY_ITEMS:
+        header = _BIZ_CATEGORY_HEADERS[category_id]
+        rows = list(_BIZ_CATEGORY_ITEMS[category_id]) + [_NAV_MAIN_ONLY_ROW]
+    else:
         return False, None
     try:
         payload = {
@@ -232,14 +370,12 @@ def send_service_menu(to: str, service_id: str):
             "to": to,
             "type": "interactive",
             "interactive": {
-                "type": "button",
-                "header": {"type": "text", "text": menu["header"]},
-                "body": {"text": menu["body"] + "\n\n🔙 Type *menu* anytime to return to the main menu."},
+                "type": "list",
+                "header": {"type": "text", "text": header},
+                "body": {"text": "What would you like to know?"},
                 "action": {
-                    "buttons": [
-                        {"type": "reply", "reply": {"id": btn["id"], "title": btn["title"]}}
-                        for btn in menu["buttons"]
-                    ]
+                    "button": "View Options",
+                    "sections": [{"title": header, "rows": rows}],
                 }
             }
         }
@@ -253,6 +389,48 @@ def send_service_menu(to: str, service_id: str):
         return False, None
     except Exception as e:
         print(f"send_service_menu error: {e}")
+        return False, None
+
+
+def send_nav_buttons(to: str, header_text: str, body_text: str):
+    """Sends a leaf answer screen (tier 3) with exactly the two nav
+    buttons every leaf screen carries: 🔙 Back (returns to the category
+    list this leaf came from) and 🏠 Main Menu (jumps straight home).
+    2 buttons comfortably fits WhatsApp's 3-button cap.
+
+    header_text may be empty/None — WhatsApp allows an interactive
+    button message with no header."""
+    if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
+        return False, None
+    try:
+        interactive = {
+            "type": "button",
+            "body": {"text": body_text},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "nav_back", "title": "🔙 Back"}},
+                    {"type": "reply", "reply": {"id": "nav_main", "title": "🏠 Main Menu"}},
+                ]
+            }
+        }
+        if header_text:
+            interactive["header"] = {"type": "text", "text": header_text}
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "interactive",
+            "interactive": interactive,
+        }
+        res = _session.post(
+            f"{WA_BASE}/{PHONE_NUMBER_ID}/messages",
+            headers=_headers(), json=payload, timeout=10,
+        )
+        if res.status_code == 200:
+            return True, res.json().get("messages", [{}])[0].get("id")
+        _handle_wa_error(res.status_code, res.text, f"send_nav_buttons to {to}")
+        return False, None
+    except Exception as e:
+        print(f"send_nav_buttons error: {e}")
         return False, None
 
 
