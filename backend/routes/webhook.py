@@ -37,7 +37,7 @@ _executor = ThreadPoolExecutor(max_workers=10)
 #      and get reprocessed (duplicate AI replies / duplicate sends).
 #   2. Guarded by a lock so the check-and-reserve is atomic — two
 #      near-simultaneous webhook deliveries for the same message id can no
-#      longer both pass the "not seen yet" check before either records it.
+#      longer both pass the "not seen yet" check before either records it
 _processed_ids = set()
 _processed_ids_order = deque()
 _processed_lock = threading.Lock()
