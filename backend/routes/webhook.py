@@ -1185,7 +1185,20 @@ def _handle_message(msg, socketio, name=""):
     # silence. The text branch handles its own is_new welcome (it also
     # needs to check MENU_TRIGGERS at the same time), so skip it there
     # to avoid sending the welcome menu twice.
-    if is_new and msg_type != "text":
+    #
+    # IMPORTANT: this must exclude "interactive" (list_reply/button_reply
+    # taps) and "button" (legacy quick-reply taps). Those are explicit
+    # menu selections that get handled by their own branch further down
+    # in this function — a genuinely brand-new contact can never have an
+    # interactive/button reply as their literal first message anyway
+    # (there's nothing on their screen yet to tap). If `is_new` is True
+    # on one of these (e.g. a user record got reset/recreated while an
+    # old menu was still on the customer's screen), letting this block
+    # run too means BOTH this generic/combined welcome AND the specific
+    # menu from the real tap handler get sent — e.g. tapping "Business
+    # Services" would send the combined Biz+Law text here first, then
+    # the correct Biz-only list from the button_reply handler below.
+    if is_new and msg_type not in ("text", "interactive", "button"):
         _user_service_context.pop(phone, None)
         _contact_collection.pop(phone, None)
         _user_menu_view[phone] = source
