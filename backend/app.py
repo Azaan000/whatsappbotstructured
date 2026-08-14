@@ -5,7 +5,7 @@ import os
 import shutil
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Flask
 from flask_cors import CORS
 from flask_socketio import SocketIO
@@ -16,6 +16,8 @@ from routes.analytics import analytics_bp
 from routes.chat import chat_bp
 from routes.auth import auth_bp
 from routes.broadcast import broadcast_bp
+from routes.system import system_bp
+from utils.status_state import update_status
 from utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -48,6 +50,7 @@ app.register_blueprint(analytics_bp)
 app.register_blueprint(chat_bp)
 app.register_blueprint(auth_bp)
 app.register_blueprint(broadcast_bp)
+app.register_blueprint(system_bp)
 
 
 @app.route("/")
@@ -69,8 +72,15 @@ def _run_media_cleanup():
         try:
             deleted, freed = cleanup_old_media(days=30)
             log.info(f"Media cleanup done: {deleted} files, {freed/1024/1024:.1f} MB freed")
+            update_status(
+                last_cleanup_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                last_cleanup_deleted=deleted,
+                last_cleanup_freed_mb=round(freed / 1024 / 1024, 1),
+                last_cleanup_error=None,
+            )
         except Exception as e:
             log.error(f"Media cleanup error: {e}")
+            update_status(last_cleanup_error=str(e))
         time.sleep(86400)
 
 
@@ -98,8 +108,13 @@ def _run_db_backup():
                 dest = os.path.join(BACKUP_DIR, f"database_{ts}.db")
                 shutil.copy2(DB_PATH, dest)
                 log.info(f"Database backup created: {dest}")
+                update_status(
+                    last_backup_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    last_backup_error=None,
+                )
             else:
                 log.warning(f"Backup skipped — {DB_PATH} does not exist")
+                update_status(last_backup_error=f"{DB_PATH} does not exist")
 
             cutoff = time.time() - (BACKUP_RETENTION_DAYS * 86400)
             removed = 0
@@ -112,6 +127,7 @@ def _run_db_backup():
                 log.info(f"Pruned {removed} backup(s) older than {BACKUP_RETENTION_DAYS} days")
         except Exception as e:
             log.error(f"Database backup error: {e}")
+            update_status(last_backup_error=str(e))
         time.sleep(21600)  # every 6 hours
 
 
