@@ -376,66 +376,73 @@ function Dashboard({ authUser, onLogout }) {
       )}
 
       {/* Top bar */}
-      <div style={barStyle}>
+      <div style={barStyle} className="topBar">
         <span className="brandTitleShimmer" style={{ fontSize: 16, fontWeight: 700, letterSpacing: 0.3 }}>
           BizAdvise & LawAdvise
         </span>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <button style={btnStyle("#fff", "var(--color-navy)")} onClick={async () => { await refreshAnalytics(); setShowAnalytics(true); }}>
-            📊 Analytics
+        <div className="topBarActions" style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <button className="topBarBtn" style={btnStyle("#fff", "var(--color-navy)")} onClick={async () => { await refreshAnalytics(); setShowAnalytics(true); }}>
+            📊 <span className="topBarBtnLabel">Analytics</span>
           </button>
           <button
+            className="topBarBtn"
             style={{ ...btnStyle("var(--color-red)", "#fff"), display: "flex", alignItems: "center", gap: 6 }}
             onClick={() => setShowConsultations(true)}
           >
-            📋 Consultations
+            📋 <span className="topBarBtnLabel">Consultations</span>
             {consultationCount > 0 && (
               <span style={{ background: "#fff", color: "var(--color-red)", borderRadius: "50%", width: 18, height: 18, fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {consultationCount}
               </span>
             )}
           </button>
-          <button style={btnStyle("var(--color-gold)", "#fff")} onClick={() => setShowBroadcast(true)}>
-            📢 Broadcast
+          <button className="topBarBtn" style={btnStyle("var(--color-gold)", "#fff")} onClick={() => setShowBroadcast(true)}>
+            📢 <span className="topBarBtnLabel">Broadcast</span>
           </button>
-          <button style={btnStyle("var(--color-navy-light)", "#fff")} onClick={() => api.reloadKnowledge()}>
-            🔄 Reload KB
+          <button className="topBarBtn" style={btnStyle("var(--color-navy-light)", "#fff")} onClick={() => api.reloadKnowledge()}>
+            🔄 <span className="topBarBtnLabel">Reload KB</span>
           </button>
-          <button style={btnStyle("#fff", "var(--color-navy)")} onClick={() => setShowAccount(true)}>
-            👤 {authUser?.display_name || authUser?.username}
+          <button className="topBarBtn" style={btnStyle("#fff", "var(--color-navy)")} onClick={() => setShowAccount(true)}>
+            👤 <span className="topBarBtnLabel">{authUser?.display_name || authUser?.username}</span>
           </button>
-          <button style={btnStyle("#f5f5f5", "#333")} onClick={onLogout}>
-            Log out
+          <button className="topBarBtn" style={btnStyle("#f5f5f5", "#333")} onClick={onLogout}>
+            <span className="topBarBtnLabel">Log out</span>
           </button>
         </div>
       </div>
 
-      {/* Main layout */}
-      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        <Sidebar
-          users={users}
-          selectedPhone={selectedPhone}
-          connected={connected}
-          unreadCounts={unreadCounts}
-          highlightedUsers={highlightedUsers}
-          bookedConsultPhones={bookedConsultPhones}
-          onSelect={selectUser}
-          onExportAll={() => api.exportCsv()}
-          onUserDeleted={handleUserDeleted}
-          onMarkAllRead={handleMarkAllRead}
-        />
-        <ChatArea
-          user={selectedUser}
-          messages={messages}
-          loading={loading}
-          typing={typing}
-          sending={sending}
-          onSend={handleSend}
-          onSendFile={handleSendFile}
-          onToggleMode={handleToggleMode}
-          onEdit={() => setEditingUser(selectedUser)}
-          onExport={() => api.exportCsv(selectedPhone)}
-        />
+      {/* Main layout — on mobile widths, only one of Sidebar/ChatArea is visible
+          at a time (WhatsApp-style), controlled by the .mobileChatOpen class. */}
+      <div className={`mainLayout${selectedPhone ? " mobileChatOpen" : ""}`} style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+        <div className="sidebarPane">
+          <Sidebar
+            users={users}
+            selectedPhone={selectedPhone}
+            connected={connected}
+            unreadCounts={unreadCounts}
+            highlightedUsers={highlightedUsers}
+            bookedConsultPhones={bookedConsultPhones}
+            onSelect={selectUser}
+            onExportAll={() => api.exportCsv()}
+            onUserDeleted={handleUserDeleted}
+            onMarkAllRead={handleMarkAllRead}
+          />
+        </div>
+        <div className="chatPane">
+          <ChatArea
+            user={selectedUser}
+            messages={messages}
+            loading={loading}
+            typing={typing}
+            sending={sending}
+            onSend={handleSend}
+            onSendFile={handleSendFile}
+            onToggleMode={handleToggleMode}
+            onEdit={() => setEditingUser(selectedUser)}
+            onExport={() => api.exportCsv(selectedPhone)}
+            onBack={() => { setSelectedPhone(null); setSelectedUser(null); }}
+          />
+        </div>
       </div>
 
       {/* Connection status indicator */}

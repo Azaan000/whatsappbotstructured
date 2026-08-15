@@ -63,6 +63,44 @@
   color: var(--btn-color) !important;
 }
 
+/* ── Mobile header layout ─────────────────────────────────────────────
+   On narrow screens there isn't room for the identity block (avatar,
+   name, phone, mode pill) AND three labelled action buttons on one
+   line — that's what was causing the "Switch to Human" icon to land on
+   top of the phone number. Instead of squeezing everything onto one
+   row, force two clean rows: identity on top (full width), actions
+   below (full width, right-aligned) — nothing can overlap once they're
+   on separate rows. */
+@media (max-width: 768px) {
+  .header {
+    flex-wrap: wrap;
+    row-gap: 8px;
+    padding: 10px 12px;
+  }
+  .headerLeft {
+    flex-basis: 100%;
+    width: 100%;
+  }
+  .headerActions {
+    flex-basis: 100%;
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .headerName {
+    font-size: 14px;
+  }
+  .actionBtn {
+    min-width: 0;
+    padding: 5px 8px;
+  }
+  .actionBtnLabel {
+    display: none;
+  }
+  .actionBtnIcon {
+    font-size: 18px;
+  }
+}
+
 /* ── Search ── */
 .searchBar { padding: 8px 18px; background: #fff; border-bottom: 1px solid #e0e0e0; position: relative; flex-shrink: 0; }
 .searchInput { width: 100%; padding: 7px 36px 7px 12px; border-radius: 20px; border: 1px solid #ddd; outline: none; font-size: 13px; box-sizing: border-box; }

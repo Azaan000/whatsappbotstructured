@@ -139,7 +139,7 @@ const seenKeys = new Set();
 
 export default function ChatArea({
   user, messages, loading, typing, sending,
-  onSend, onSendFile, onToggleMode, onEdit, onExport
+  onSend, onSendFile, onToggleMode, onEdit, onExport, onBack
 }) {
   const [text, setText] = useState("");
   const [search, setSearch] = useState("");
@@ -200,6 +200,14 @@ export default function ChatArea({
       {/* Header */}
       <div className={s.header}>
         <div className={s.headerLeft}>
+          <button
+            type="button"
+            className="mobileBackBtn"
+            onClick={onBack}
+            aria-label="Back to chat list"
+          >
+            ←
+          </button>
           <div className={s.headerAvatar} style={{ background: user.human_mode ? "#ff9800" : "#667eea" }}>
             {(user.name || user.phone).charAt(0).toUpperCase()}
           </div>

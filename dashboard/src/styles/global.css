@@ -63,3 +63,115 @@ body {
   0%   { background-position: 200% center; }
   100% { background-position: -20% center; }
 }
+
+/* ── Mobile responsiveness ─────────────────────────────────────────────
+   Below 768px (phones, and the Capacitor Android WebView), the sidebar
+   chat-list and the active conversation can't sit side by side — there
+   isn't room. Instead we show one pane at a time, WhatsApp-style:
+   - No chat selected  → sidebar list fills the screen, chat pane hidden
+   - Chat selected      → chat pane fills the screen, sidebar hidden
+   The `.mobileChatOpen` class (added in App.js when a phone is selected)
+   drives which pane is visible. The back arrow in ChatArea's header
+   (`.mobileBackBtn`) clears the selection to return to the list, and is
+   only shown at these widths — on desktop it stays hidden. */
+
+.mobileBackBtn {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mainLayout {
+    position: relative;
+  }
+
+  .sidebarPane,
+  .chatPane {
+    width: 100%;
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  /* Default (no chat open): show the list, hide the chat pane */
+  .mainLayout .chatPane {
+    display: none;
+  }
+
+  /* Chat open: hide the list, show the chat pane full-width */
+  .mainLayout.mobileChatOpen .sidebarPane {
+    display: none;
+  }
+  .mainLayout.mobileChatOpen .chatPane {
+    display: flex;
+  }
+
+  .sidebarPane > * {
+    width: 100% !important;
+  }
+
+  .mobileBackBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    font-size: 20px;
+    cursor: pointer;
+    color: var(--color-navy, #03244f);
+    margin-right: 4px;
+  }
+
+  /* Top bar: on phone widths the row of pill buttons (Analytics,
+     Consultations, Broadcast, Reload KB, account, Log out) is too
+     cramped to wrap naturally — arrange them as a tidy 2-column grid
+     instead, each pill full-width within its cell. */
+  .brandTitleShimmer {
+    font-size: 14px !important;
+  }
+
+  .topBar {
+    flex-wrap: wrap !important;
+    row-gap: 8px !important;
+    padding: 10px 12px !important;
+  }
+
+  .topBarActions {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    width: 100% !important;
+    margin-left: 0 !important;
+    gap: 6px !important;
+  }
+
+  .topBarBtn {
+    width: 100% !important;
+    justify-content: center !important;
+    font-size: 11px !important;
+    padding: 7px 6px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .topBarBtnLabel {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+@media (max-width: 380px) {
+  /* Extremely narrow phones — drop to icon-only pills so nothing
+     truncates awkwardly. */
+  .topBarBtnLabel {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
+  /* Very narrow phones — trim the top bar action buttons further. */
+  .mainLayout {
+    font-size: 13px;
+  }
+}
