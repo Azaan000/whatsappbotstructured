@@ -25,3 +25,6 @@ node_modules/
 # Build folders
 dist/
 build/
+dashboard/android/app/release/baselineProfiles/0/BizLawDashboard-1.0-release.dm
+dashboard/android/app/release/baselineProfiles/1/BizLawDashboard-1.0-release.dm
+dashboard/android/app/jks

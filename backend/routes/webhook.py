@@ -917,6 +917,26 @@ _ENGLISH_GREETINGS_RE = re.compile(
     re.IGNORECASE,
 )
 
+# ── Website-widget lead detection ────────────────────────────────────────
+# Both the live BizAdvise widget and the future LawAdvise widget build
+# their "Continue on WhatsApp" prefilled text the same way (see
+# index.html's addMessage): it always starts with "Hi, I'm interested
+# in: <topic>". That means every widget lead technically starts with
+# "Hi" — which, unqualified, is exactly what _ENGLISH_GREETINGS_RE
+# matches. Without this check, _is_greeting() intercepts the ENTIRE
+# lead message (topic, page URL, utm params, ref id and all) before
+# _detect_ad_source ever gets a chance to read the topic, and every
+# widget lead — from either brand, forever — collapses into the
+# generic combined greeting instead of being routed to the right
+# brand/service. This check is brand-agnostic on purpose so it keeps
+# working unchanged once a LawAdvise widget goes live with its own
+# topics.
+_WIDGET_LEAD_RE = re.compile(r"^\s*hi,?\s*i'?m interested in\s*:", re.IGNORECASE)
+
+
+def _looks_like_widget_lead(text: str) -> bool:
+    return bool(_WIDGET_LEAD_RE.match(text or ""))
+
 
 def _is_greeting(text: str) -> bool:
     """Pattern-based greeting detection — catches phonetic/typo variants
@@ -926,6 +946,10 @@ def _is_greeting(text: str) -> bool:
     word."""
     stripped = (text or "").strip()
     if not stripped:
+        return False
+    if _looks_like_widget_lead(stripped):
+        # A "Hi, I'm interested in: ..." widget lead is not a greeting —
+        # let it fall through to ad_source/keyword routing instead.
         return False
     if any(marker in stripped for marker in _SALAM_UR):
         return True
@@ -1262,6 +1286,24 @@ def _handle_message(msg, socketio, name=""):
             _user_menu_view[phone] = source
             _user_current_screen.pop(phone, None)
             _executor.submit(_send_welcome_menu, phone, socketio, source)
+            return
+
+        if ad_source:
+            # RETURNING contact, but this message's content/referral still
+            # clearly points to one brand — e.g. tapping a "Continue on
+            # WhatsApp" link from the website widget again after having
+            # messaged the bot before. Previously ad_source was only ever
+            # acted on inside the `if is_new:` block above, so a returning
+            # tester always fell through to MENU_TRIGGERS / _is_greeting
+            # instead and got the generic combined menu no matter what
+            # they'd actually clicked. This applies identically to a
+            # future LawAdvise widget lead, since ad_source is already
+            # 'biz' | 'law' | None from _detect_ad_source, brand-agnostic.
+            _user_service_context.pop(phone, None)
+            _contact_collection.pop(phone, None)
+            _user_menu_view[phone] = ad_source
+            _user_current_screen.pop(phone, None)
+            _executor.submit(_send_welcome_menu, phone, socketio, ad_source)
             return
 
         if text_lower in FULL_MENU_TRIGGERS:
