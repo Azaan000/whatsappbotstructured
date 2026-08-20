@@ -6,3 +6,4 @@ requests>=2.31
 werkzeug>=3.0
 gunicorn>=21.2
 gevent>=24.2.1
+packaging>=23.0
