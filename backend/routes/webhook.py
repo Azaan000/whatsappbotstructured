@@ -938,6 +938,48 @@ def _looks_like_widget_lead(text: str) -> bool:
     return bool(_WIDGET_LEAD_RE.match(text or ""))
 
 
+# Captures whatever sits between "interested in:" and the newline that
+# precedes the "(via <url>)" suffix — i.e. just the topic itself, e.g.
+# "File My Taxes". `.` doesn't match "\n" by default, so this naturally
+# stops before the page-url line without needing a more specific
+# end-of-topic marker.
+_WIDGET_LEAD_TOPIC_RE = re.compile(r"^\s*hi,?\s*i'?m interested in\s*:\s*(.+?)\s*(?:\n|$)", re.IGNORECASE)
+
+
+def _extract_widget_lead_topic(text: str):
+    """Pulls the topic out of a widget lead's prefilled text, lowercased
+    for matching against WIDGET_TOPIC_SERVICE_MAP. Returns None if the
+    text isn't a widget lead at all (shouldn't normally be called unless
+    _looks_like_widget_lead already returned True, but stays defensive)."""
+    match = _WIDGET_LEAD_TOPIC_RE.match(text or "")
+    if not match:
+        return None
+    return match.group(1).strip().lower()
+
+
+# Maps each of the website widget's known quick-reply topics (see
+# CANNED_REPLIES in the widget backend's main.py — these strings must
+# stay in sync with the topic string in each of those six entries,
+# lowercased for matching) straight to the service submenu it should
+# open. This is what lets a "File My Taxes" tap land the visitor
+# directly on the Taxation Services submenu, instead of just the
+# brand-level BizAdvise menu that ad_source-only detection would give.
+#
+# Freeform widget chat topics are deliberately NOT covered here — the
+# widget backend collapses those to the generic "bizservices" tag before
+# building the wa.me link (an arbitrary AI-picked topic string isn't
+# reliable enough to route on), so they fall through unmatched to the
+# existing ad_source-based brand-menu handling below, same as before.
+WIDGET_TOPIC_SERVICE_MAP = {
+    "start a new business": "biz_business",
+    "file my taxes": "biz_tax",
+    "manage my accounts": "biz_accounts",
+    "legal assistance": "biz_legal",
+    "grow my business online": "biz_digital",
+    "talk to an expert": "biz_consult",
+}
+
+
 def _is_greeting(text: str) -> bool:
     """Pattern-based greeting detection — catches phonetic/typo variants
     of Salam and common English greetings without needing an exhaustive
@@ -1246,6 +1288,50 @@ def _handle_message(msg, socketio, name=""):
         if phone in _contact_collection:
             _handle_contact_collection(phone, text, socketio)
             return
+
+        # ── Widget lead → straight to the specific submenu ──────────────
+        # A widget lead's topic is a much stronger signal than an ad
+        # click's free text: it's one of the widget's own fixed button
+        # labels, not a phrase we have to keyword-guess at. When it
+        # matches a known service, skip the brand-level welcome menu
+        # entirely (both the is_new and returning-contact branches below
+        # would otherwise only get us as far as "biz" or "law") and open
+        # that service's submenu directly — same as if the customer had
+        # manually tapped "View Services" -> "Taxation Services"
+        # themselves. Runs for both new and returning contacts, since
+        # someone can click "Continue on WhatsApp" again after having
+        # messaged the bot before.
+        if _looks_like_widget_lead(text):
+            topic = _extract_widget_lead_topic(text)
+            service_id = WIDGET_TOPIC_SERVICE_MAP.get(topic) if topic else None
+            if service_id:
+                _user_service_context.pop(phone, None)
+                _contact_collection.pop(phone, None)
+                brand = _service_brand(service_id) or ad_source or "biz"
+                _user_menu_view[phone] = brand
+                if service_id in SERVICE_MENU_IDS:
+                    _user_service_context[phone] = service_id
+                    _user_current_screen[phone] = service_id
+                    _executor.submit(_send_service_menu_safe, phone, service_id, socketio)
+                elif service_id in BIZ_DIRECT_IDS:
+                    response = BUTTON_RESPONSES.get(service_id, "")
+                    if response:
+                        _user_current_screen[phone] = service_id
+                        _executor.submit(_send_text_reply, phone, response, socketio, service_id)
+                    else:
+                        _user_current_screen.pop(phone, None)
+                        _executor.submit(_send_welcome_menu, phone, socketio, brand)
+                else:
+                    # Topic matched a service_id that isn't wired into
+                    # either dict yet (e.g. a future addition) — fail
+                    # safe to the brand menu rather than sending nothing.
+                    _user_current_screen.pop(phone, None)
+                    _executor.submit(_send_welcome_menu, phone, socketio, brand)
+                return
+            # Unmatched topic (the generic "bizservices" tag from freeform
+            # widget chat, or a future topic not yet added to the map
+            # above) — fall through unchanged to the existing
+            # is_new/ad_source handling below.
 
         if is_new:
             _user_service_context.pop(phone, None)
