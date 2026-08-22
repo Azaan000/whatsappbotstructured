@@ -299,7 +299,29 @@ BUTTON_RESPONSES = {
     "docs_timeline": "⏳ *Timeline:*\n\nThe duration depends on the type and complexity of documentation required.",
     "docs_consult": f"💬 Our legal team will contact you shortly to assist with your documentation needs.\n\n📞 Call or WhatsApp us directly: {LAW_CONTACT}",
     "contact_us": _consult_choice_message("📞 *Contact Us*"),
+    # LawAdvise-context variant of the same "Talk to an Expert" reply —
+    # "contact_us" is reached both from the ambiguous combined-menu row
+    # (item 17, no way to know which brand the customer wants) and from
+    # LawAdvise's own dedicated "Talk to an Expert" row (item 10 on the
+    # Law-only menu, and the LawAdvise widget's "Talk to a Lawyer"
+    # button). The plain "contact_us" entry above stays the ambiguous
+    # default (BizAdvise's CONTACT number); this one is used instead
+    # wherever the calling code already knows it's a LawAdvise context —
+    # see _contact_us_response() below.
+    "contact_us_law": _consult_choice_message("📞 *Contact Us*", contact=LAW_CONTACT),
 }
+
+
+def _contact_us_response(brand: str) -> str:
+    """contact_us is the one BUTTON_RESPONSES entry without a single
+    fixed answer — every other id maps to text for one specific brand,
+    but this id is shared between the ambiguous combined-menu row and
+    LawAdvise's own dedicated one. Callers that already know the brand
+    (from _user_menu_view, an active text menu, or an explicit widget
+    topic) should use this instead of indexing BUTTON_RESPONSES
+    directly, so a LawAdvise customer reaches LAW_CONTACT rather than
+    silently getting BizAdvise's number."""
+    return BUTTON_RESPONSES["contact_us_law"] if brand == "law" else BUTTON_RESPONSES["contact_us"]
 
 # ── "Back to menu" hint ───────────────────────────────────────────────────
 # Appended to every leaf response so a customer reading any single
@@ -1332,7 +1354,7 @@ def _handle_message(msg, socketio, name=""):
                     _user_current_screen[phone] = service_id
                     _executor.submit(_send_service_menu_safe, phone, service_id, socketio)
                 elif service_id in BIZ_DIRECT_IDS:
-                    response = BUTTON_RESPONSES.get(service_id, "")
+                    response = _contact_us_response(brand) if service_id == "contact_us" else BUTTON_RESPONSES.get(service_id, "")
                     if response:
                         _user_current_screen[phone] = service_id
                         _executor.submit(_send_text_reply, phone, response, socketio, service_id)
@@ -1515,7 +1537,7 @@ def _handle_message(msg, socketio, name=""):
                 _user_current_screen[phone] = service_id
                 _executor.submit(_send_service_menu_safe, phone, service_id, socketio)
             elif service_id in BIZ_DIRECT_IDS:
-                response = BUTTON_RESPONSES.get(service_id, "")
+                response = _contact_us_response(active_view) if service_id == "contact_us" else BUTTON_RESPONSES.get(service_id, "")
                 if response:
                     _user_current_screen[phone] = service_id
                     _executor.submit(_send_text_reply, phone, response, socketio, service_id)
@@ -1561,7 +1583,15 @@ def _handle_message(msg, socketio, name=""):
                 _handle_nav_back(phone, socketio, source)
 
             elif selected_id in BIZ_DIRECT_IDS:
-                response = BUTTON_RESPONSES.get(selected_id, "")
+                # _user_menu_view (whichever brand's list this row was
+                # actually tapped from) rather than the locked `source` —
+                # matches the same reasoning as _resolve_menu_source, and
+                # is what makes a LawAdvise customer's "Talk to an
+                # Expert" tap resolve to LAW_CONTACT via
+                # _contact_us_response below instead of always getting
+                # BizAdvise's number.
+                menu_brand = _user_menu_view.get(phone, source)
+                response = _contact_us_response(menu_brand) if selected_id == "contact_us" else BUTTON_RESPONSES.get(selected_id, "")
                 if response:
                     _user_current_screen[phone] = selected_id
                     _executor.submit(_send_leaf_reply, phone, response, socketio, selected_id, None)
@@ -1929,6 +1959,11 @@ def _send_text_reply(phone, text, socketio, service_id=None):
             return
         service_label = SERVICE_LABELS.get(service_id, "")
         brand = _service_brand(service_id)
+        if not brand and LAW_CONTACT in text:
+            # Same reasoning as _send_leaf_reply — contact_us is
+            # brand-ambiguous by id, but `text` is already the resolved
+            # reply, so use it to record an accurate brand on the lead.
+            brand = "law"
         # "Book Consultation" paths — explicit booking intent, go
         # straight into the Name -> Mobile -> Best Time collection flow.
         if text in CONSULT_TRIGGER_TEXTS:
@@ -1987,6 +2022,14 @@ def _send_leaf_reply(phone, text, socketio, leaf_id, parent_category):
             return
         service_label = SERVICE_LABELS.get(leaf_id) or SERVICE_LABELS.get(parent_category, "")
         brand = _service_brand(leaf_id) or _service_brand(parent_category)
+        if not brand and LAW_CONTACT in text:
+            # contact_us is brand-ambiguous by id alone (see
+            # _service_brand's docstring) — but by this point `text` is
+            # already the resolved reply (via _contact_us_response), so
+            # if it's quoting the LawAdvise number, this is genuinely a
+            # LawAdvise lead and the consultation record should say so
+            # instead of leaving brand blank.
+            brand = "law"
         if text in CONSULT_TRIGGER_TEXTS:
             lead_id = consultation_model.create_lead(phone, leaf_id or "", service_label, brand or "law")
             _contact_collection[phone] = {
