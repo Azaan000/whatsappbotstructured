@@ -957,26 +957,44 @@ def _extract_widget_lead_topic(text: str):
     return match.group(1).strip().lower()
 
 
-# Maps each of the website widget's known quick-reply topics (see
-# CANNED_REPLIES in the widget backend's main.py — these strings must
-# stay in sync with the topic string in each of those six entries,
-# lowercased for matching) straight to the service submenu it should
-# open. This is what lets a "File My Taxes" tap land the visitor
-# directly on the Taxation Services submenu, instead of just the
-# brand-level BizAdvise menu that ad_source-only detection would give.
+# Maps each of the website widgets' known quick-reply topics (see
+# CANNED_REPLIES in each widget backend's main.py — BizAdvise's and
+# LawAdvise's are separate deployments/files, but both build their
+# wa.me prefill the same way, so both sets of topic strings land here.
+# These strings must stay in sync with the topic string in each
+# CANNED_REPLIES entry, lowercased for matching) straight to the
+# service submenu it should open, plus which brand that submenu
+# belongs to. The brand is stored explicitly per topic rather than
+# derived from the service_id, because "contact_us" (LawAdvise's "Talk
+# to a Lawyer") is brand-ambiguous on its own — it's also the id used
+# by the combined 1-17 menu's own "Talk to an Expert" row — so
+# _service_brand() can't tell law from biz for it.
 #
-# Freeform widget chat topics are deliberately NOT covered here — the
-# widget backend collapses those to the generic "bizservices" tag before
-# building the wa.me link (an arbitrary AI-picked topic string isn't
-# reliable enough to route on), so they fall through unmatched to the
-# existing ad_source-based brand-menu handling below, same as before.
+# This is what lets a "File My Taxes" or "Divorce / Khula" tap land the
+# visitor directly on that specific submenu, instead of just the
+# brand-level welcome menu that ad_source-only detection would give.
+#
+# Freeform widget chat topics are deliberately NOT covered here — each
+# widget backend collapses those to a generic "bizservices"/"lawservices"
+# tag before building the wa.me link (an arbitrary AI-picked topic
+# string isn't reliable enough to route on), so they fall through
+# unmatched to the existing ad_source-based brand-menu handling below,
+# same as before.
 WIDGET_TOPIC_SERVICE_MAP = {
-    "start a new business": "biz_business",
-    "file my taxes": "biz_tax",
-    "manage my accounts": "biz_accounts",
-    "legal assistance": "biz_legal",
-    "grow my business online": "biz_digital",
-    "talk to an expert": "biz_consult",
+    # BizAdvise widget topics -> (service_id, brand)
+    "start a new business": ("biz_business", "biz"),
+    "file my taxes": ("biz_tax", "biz"),
+    "manage my accounts": ("biz_accounts", "biz"),
+    "legal assistance": ("biz_legal", "biz"),
+    "grow my business online": ("biz_digital", "biz"),
+    "talk to an expert": ("biz_consult", "biz"),
+    # LawAdvise widget topics -> (service_id, brand)
+    "online marriage / nikah": ("online_nikah", "law"),
+    "court marriage": ("court_marriage", "law"),
+    "divorce / khula": ("divorce_khula", "law"),
+    "child custody": ("child_custody", "law"),
+    "property law": ("property_law", "law"),
+    "talk to a lawyer": ("contact_us", "law"),
 }
 
 
@@ -1303,11 +1321,11 @@ def _handle_message(msg, socketio, name=""):
         # messaged the bot before.
         if _looks_like_widget_lead(text):
             topic = _extract_widget_lead_topic(text)
-            service_id = WIDGET_TOPIC_SERVICE_MAP.get(topic) if topic else None
-            if service_id:
+            match = WIDGET_TOPIC_SERVICE_MAP.get(topic) if topic else None
+            if match:
+                service_id, brand = match
                 _user_service_context.pop(phone, None)
                 _contact_collection.pop(phone, None)
-                brand = _service_brand(service_id) or ad_source or "biz"
                 _user_menu_view[phone] = brand
                 if service_id in SERVICE_MENU_IDS:
                     _user_service_context[phone] = service_id
