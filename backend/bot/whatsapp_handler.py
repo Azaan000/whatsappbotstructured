@@ -236,7 +236,7 @@ _LAW_CATEGORY_HEADERS = {
     "online_nikah":   "Online Marriage / Nikah",
     "court_marriage": "Court Marriage",
     "divorce_khula":  "Divorce / Khula",
-    "child_custody":  "Child Custody / Guardianship",
+    "child_custody":  "Child Custody",
     "maintenance":    "Maintenance / Dowery",
     "property_law":   "Property Law",
     "inheritance":    "Inheritance",
