@@ -91,7 +91,7 @@ MEDIA_FOLDER = "media_files"
 # contact on hand, not just whoever is quoted inside a specific menu
 # leaf's text. Kept as a single constant so the numbers only need to be
 # updated in one place.
-FREE_CHAT_CONTACT_FOOTER = "\n\n📞 03003029039 Zeeshan / 03332454111 Fakhir"
+FREE_CHAT_CONTACT_FOOTER = "\n\n📞03003029039  / 📞03332454111 for more details "
 
 # ── Ad-based menu routing ────────────────────────────────────────────────
 # When someone taps a "Click to WhatsApp" ad, WhatsApp attaches a
