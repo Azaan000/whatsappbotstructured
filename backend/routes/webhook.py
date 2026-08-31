@@ -85,6 +85,14 @@ CONTACT = "03003029039 / 03332454111"       # BizAdvise
 LAW_CONTACT = "03003029039 / 03351340999"    # LawAdvise
 MEDIA_FOLDER = "media_files"
 
+# Appended to every free-chat AI reply (i.e. every reply that falls
+# through to _process_ai_reply rather than a menu/button/list tap) so a
+# customer typing questions in open chat always has a direct human
+# contact on hand, not just whoever is quoted inside a specific menu
+# leaf's text. Kept as a single constant so the numbers only need to be
+# updated in one place.
+FREE_CHAT_CONTACT_FOOTER = "\n\n📞 03003029039 Fakhir / 03332454111 Zeeshan"
+
 # ── Ad-based menu routing ────────────────────────────────────────────────
 # When someone taps a "Click to WhatsApp" ad, WhatsApp attaches a
 # `referral` object to their very first message — containing the ad's
@@ -2053,9 +2061,16 @@ def _send_leaf_reply(phone, text, socketio, leaf_id, parent_category):
 def _process_ai_reply(phone, text, socketio):
     try:
         reply = ask_ai(text)
-        success, wa_msg_id = send_text(phone, reply)
+        # Every free-chat AI reply carries the human contact numbers —
+        # appended here (once, right before send/save) rather than
+        # inside ask_ai/the system prompt, so it's guaranteed present
+        # regardless of what the model actually generated, and is
+        # never itself sent to the model as something to reason about
+        # or accidentally omit.
+        reply_with_contact = reply + FREE_CHAT_CONTACT_FOOTER
+        success, wa_msg_id = send_text(phone, reply_with_contact)
         status = "sent" if success else "failed"
-        save_message(phone, reply, "bot", socketio,
+        save_message(phone, reply_with_contact, "bot", socketio,
                      status=status, whatsapp_message_id=wa_msg_id, source="ai")
     except Exception as e:
         log.error(f"AI reply error for {phone}: {e}")
