@@ -219,10 +219,10 @@ export default function ChatArea({
   }
 
   const actionBtns = [
-    { key: "notify", icon: notifying ? "⏳" : "📢", label: notifying ? "Sending..." : "Notify Owner", action: handleNotifyOwner, color: "#e91e63", disabled: notifying },
-    { key: "toggle", icon: user.human_mode ? "🤖" : "👤", label: user.human_mode ? "Switch to AI" : "Switch to Human", action: onToggleMode, color: user.human_mode ? "#0b5cff" : "#ff9800" },
-    { key: "edit",   icon: "✏️",  label: "Edit user",   action: onEdit,   color: "#9c27b0" },
-    { key: "export", icon: "⬇️", label: "Export chat",  action: onExport, color: "#4caf50" },
+    { key: "notify", icon: notifying ? "⌛" : "📣", label: notifying ? "Sending…" : "Notify Owner", action: handleNotifyOwner, color: "#e91e63", disabled: notifying },
+    { key: "toggle", icon: user.human_mode ? "🤖" : "👤\uFE0E", label: user.human_mode ? "Switch to AI" : "Switch to Human", action: onToggleMode, color: user.human_mode ? "#0b5cff" : "#ff9800" },
+    { key: "edit",   icon: "✎",   label: "Edit user",   action: onEdit,   color: "#9c27b0" },
+    { key: "export", icon: "↓",   label: "Export chat", action: onExport, color: "#4caf50" },
   ];
 
   return (

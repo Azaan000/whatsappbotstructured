@@ -20,20 +20,20 @@
 .msgCount { font-size: 11px; color: #aaa; }
 
 /* ── Action buttons with label underneath ── */
-.headerActions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.headerActions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 
 .actionBtn {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: 6px 10px;
+  padding: 5px 8px;
   border-radius: 10px;
   border: 1.5px solid transparent;
   background: transparent;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, transform 0.1s;
-  min-width: 54px;
+  min-width: 48px;
 }
 .actionBtn:hover {
   background: color-mix(in srgb, var(--btn-color) 10%, transparent);
@@ -41,11 +41,15 @@
   transform: translateY(-1px);
 }
 .actionBtn:active { transform: translateY(0); }
+.actionBtn:disabled { cursor: not-allowed; transform: none !important; }
 
 .actionBtnIcon {
   font-size: 20px;
   line-height: 1;
   display: block;
+  font-style: normal;
+  /* Force text rendering — prevent browser from swapping emoji for images */
+  font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols", sans-serif;
 }
 
 .actionBtnLabel {
@@ -63,14 +67,7 @@
   color: var(--btn-color) !important;
 }
 
-/* ── Mobile header layout ─────────────────────────────────────────────
-   On narrow screens there isn't room for the identity block (avatar,
-   name, phone, mode pill) AND three labelled action buttons on one
-   line — that's what was causing the "Switch to Human" icon to land on
-   top of the phone number. Instead of squeezing everything onto one
-   row, force two clean rows: identity on top (full width), actions
-   below (full width, right-aligned) — nothing can overlap once they're
-   on separate rows. */
+/* ── Mobile header layout ── */
 @media (max-width: 768px) {
   .header {
     flex-wrap: wrap;
@@ -91,7 +88,7 @@
   }
   .actionBtn {
     min-width: 0;
-    padding: 5px 8px;
+    padding: 5px 6px;
   }
   .actionBtnLabel {
     display: none;
