@@ -1,49 +1,69 @@
 /* Analytics.module.css */
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 24px; }
-.card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 18px; border-radius: 12px; text-align: center; color: #fff; }
-.cardValue { font-size: 26px; font-weight: 700; margin-bottom: 4px; }
-.cardLabel { font-size: 12px; opacity: 0.9; }
+.card {
+  background: linear-gradient(135deg, rgba(20, 32, 54, 0.95) 0%, rgba(13, 21, 38, 0.95) 100%);
+  border: 1px solid rgba(229, 169, 80, 0.25);
+  padding: 18px;
+  border-radius: 12px;
+  text-align: center;
+  color: #fff;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4), 0 0 12px rgba(229, 169, 80, 0.1);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s;
+}
+.card:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-gold);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 18px rgba(229, 169, 80, 0.25);
+}
+.cardValue { font-size: 28px; font-weight: 800; margin-bottom: 4px; color: var(--color-gold-light); }
+.cardLabel { font-size: 12px; color: #94a3b8; font-weight: 500; }
 
-.section { margin-bottom: 22px; padding: 14px; background: #f8f9fa; border-radius: 12px; }
-.section h3 { margin: 0 0 12px; font-size: 14px; color: #333; }
+.section {
+  margin-bottom: 22px;
+  padding: 16px;
+  background: rgba(14, 21, 37, 0.6);
+  border: 1px solid rgba(229, 169, 80, 0.14);
+  border-radius: 12px;
+}
+.section h3 { margin: 0 0 14px; font-size: 14px; font-weight: 700; color: #f8fafc; letter-spacing: -0.01em; }
 
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.statBox { text-align: center; padding: 14px; background: #fff; border-radius: 8px; }
-.statNum { font-size: 24px; font-weight: 700; color: #333; }
-.statLabel { font-size: 12px; color: #666; margin-bottom: 8px; }
-.bar { height: 6px; background: #e0e0e0; border-radius: 3px; overflow: hidden; }
+.statBox { text-align: center; padding: 14px; background: rgba(20, 29, 49, 0.75); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 10px; }
+.statNum { font-size: 24px; font-weight: 700; color: #f8fafc; }
+.statLabel { font-size: 12px; color: #94a3b8; margin-bottom: 8px; }
+.bar { height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden; }
 .barFill { height: 100%; transition: width 0.3s; }
 
 .chartRow { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.chartDate { width: 90px; font-size: 11px; color: #666; flex-shrink: 0; }
-.chartTrack { flex: 1; position: relative; height: 28px; background: #e0e0e0; border-radius: 14px; overflow: hidden; }
-.chartFill { height: 100%; background: #0b5cff; border-radius: 14px; transition: width 0.3s; }
-.chartVal { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 11px; color: #333; font-weight: 600; }
+.chartDate { width: 90px; font-size: 11px; color: #94a3b8; flex-shrink: 0; }
+.chartTrack { flex: 1; position: relative; height: 28px; background: rgba(255, 255, 255, 0.06); border-radius: 14px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.04); }
+.chartFill { height: 100%; background: linear-gradient(90deg, #1d4ed8 0%, #e5a950 100%); border-radius: 14px; transition: width 0.3s; }
+.chartVal { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 11px; color: #f8fafc; font-weight: 600; text-shadow: 0 1px 2px rgba(0,0,0,0.8); }
 
-.topRow { display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: #fff; border-radius: 8px; margin-bottom: 6px; }
-.rank { font-size: 16px; font-weight: 700; color: #0b5cff; width: 36px; }
-.topPhone { flex: 1; font-size: 13px; font-weight: 500; }
-.topMsgs { font-size: 12px; color: #666; }
+.topRow { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: rgba(20, 29, 49, 0.75); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 10px; margin-bottom: 6px; }
+.rank { font-size: 15px; font-weight: 800; color: var(--color-gold); width: 36px; }
+.topPhone { flex: 1; font-size: 13px; font-weight: 500; color: #f8fafc; }
+.topMsgs { font-size: 12px; color: #94a3b8; }
 
-.qItem { padding: 10px 12px; background: #fff; border-radius: 8px; margin-bottom: 6px; }
-.qText { font-size: 13px; color: #333; margin-bottom: 4px; }
-.qCount { font-size: 11px; color: #0b5cff; }
+.qItem { padding: 10px 14px; background: rgba(20, 29, 49, 0.75); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 10px; margin-bottom: 6px; }
+.qText { font-size: 13px; color: #f8fafc; margin-bottom: 4px; }
+.qCount { font-size: 11px; color: var(--color-gold-light); font-weight: 600; }
 
 /* ── Consultation funnel ─────────────────────────────────────────── */
 .funnelHeader {
   display: none;
 }
-.funnelRow { padding: 10px 12px; background: #fff; border-radius: 8px; margin-bottom: 8px; }
+.funnelRow { padding: 12px 14px; background: rgba(20, 29, 49, 0.75); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 10px; margin-bottom: 8px; }
 .funnelTop { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; margin-bottom: 6px; }
-.funnelService { font-size: 13px; font-weight: 600; color: #333; flex: 1 0 100%; }
+.funnelService { font-size: 13px; font-weight: 600; color: #f8fafc; flex: 1 0 100%; }
 .funnelBrand {
-  margin-left: 8px; font-size: 10px; font-weight: 600; color: #888;
-  background: #f0f0f0; padding: 1px 7px; border-radius: 8px;
+  margin-left: 8px; font-size: 10px; font-weight: 600; color: var(--color-gold-light);
+  background: rgba(229, 169, 80, 0.12); padding: 2px 8px; border-radius: 8px; border: 1px solid rgba(229, 169, 80, 0.2);
 }
-.funnelNum { font-size: 11px; color: #666; }
+.funnelNum { font-size: 11px; color: #94a3b8; }
 .funnelTrack {
-  height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden;
+  height: 8px; background: rgba(255, 255, 255, 0.08); border-radius: 4px; overflow: hidden;
   position: relative; display: flex;
 }
-.funnelFillBooked { height: 100%; background: #90a4d4; position: absolute; left: 0; top: 0; transition: width 0.3s; }
-.funnelFillCompleted { height: 100%; background: #4caf50; position: absolute; left: 0; top: 0; transition: width 0.3s; z-index: 1; }
+.funnelFillBooked { height: 100%; background: #60a5fa; position: absolute; left: 0; top: 0; transition: width 0.3s; }
+.funnelFillCompleted { height: 100%; background: #10b981; position: absolute; left: 0; top: 0; transition: width 0.3s; z-index: 1; box-shadow: 0 0 8px rgba(16, 185, 129, 0.5); }

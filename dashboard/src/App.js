@@ -391,31 +391,31 @@ function Dashboard({ authUser, onLogout }) {
           BizAdvise & LawAdvise
         </span>
         <div className="topBarActions" style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <button className="topBarBtn" style={btnStyle("#fff", "var(--color-navy)")} onClick={async () => { await refreshAnalytics(); setShowAnalytics(true); }}>
+          <button className="topBarBtn" style={btnStyle("rgba(255, 255, 255, 0.07)", "#f8fafc", "1px solid rgba(255, 255, 255, 0.12)")} onClick={async () => { await refreshAnalytics(); setShowAnalytics(true); }}>
             📊 <span className="topBarBtnLabel">Analytics</span>
           </button>
           <button
             className="topBarBtn"
-            style={{ ...btnStyle("var(--color-red)", "#fff"), display: "flex", alignItems: "center", gap: 6 }}
+            style={{ ...btnStyle("rgba(225, 29, 72, 0.18)", "#fda4af", "1px solid rgba(225, 29, 72, 0.4)"), display: "flex", alignItems: "center", gap: 6 }}
             onClick={() => setShowConsultations(true)}
           >
             📋 <span className="topBarBtnLabel">Consultations</span>
             {consultationCount > 0 && (
-              <span style={{ background: "#fff", color: "var(--color-red)", borderRadius: "50%", width: 18, height: 18, fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <span style={{ background: "var(--color-red)", color: "#fff", borderRadius: "50%", width: 18, height: 18, fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 10px rgba(225, 29, 72, 0.6)" }}>
                 {consultationCount}
               </span>
             )}
           </button>
-          <button className="topBarBtn" style={btnStyle("var(--color-gold)", "#fff")} onClick={() => setShowBroadcast(true)}>
+          <button className="topBarBtn" style={btnStyle("rgba(229, 169, 80, 0.15)", "#f6c87a", "1px solid rgba(229, 169, 80, 0.45)")} onClick={() => setShowBroadcast(true)}>
             📢 <span className="topBarBtnLabel">Broadcast</span>
           </button>
-          <button className="topBarBtn" style={btnStyle("var(--color-navy-light)", "#fff")} onClick={() => api.reloadKnowledge()}>
+          <button className="topBarBtn" style={btnStyle("rgba(22, 47, 86, 0.55)", "#93c5fd", "1px solid rgba(59, 130, 246, 0.3)")} onClick={() => api.reloadKnowledge()}>
             🔄 <span className="topBarBtnLabel">Reload KB</span>
           </button>
-          <button className="topBarBtn" style={btnStyle("#fff", "var(--color-navy)")} onClick={() => setShowAccount(true)}>
+          <button className="topBarBtn" style={btnStyle("rgba(255, 255, 255, 0.07)", "#f8fafc", "1px solid rgba(229, 169, 80, 0.3)")} onClick={() => setShowAccount(true)}>
             👤 <span className="topBarBtnLabel">{authUser?.display_name || authUser?.username}</span>
           </button>
-          <button className="topBarBtn" style={btnStyle("#f5f5f5", "#333")} onClick={onLogout}>
+          <button className="topBarBtn" style={btnStyle("rgba(255, 255, 255, 0.04)", "#94a3b8", "1px solid rgba(255, 255, 255, 0.08)")} onClick={onLogout}>
             <span className="topBarBtnLabel">Log out</span>
           </button>
         </div>
@@ -456,31 +456,55 @@ function Dashboard({ authUser, onLogout }) {
       </div>
 
       {/* Connection status indicator */}
-      <div style={{ position: "fixed", bottom: 12, right: 12, background: connected ? "#4caf50" : "#f44336", color: "#fff", padding: "4px 10px", borderRadius: 20, fontSize: 11, display: "flex", alignItems: "center", gap: 5, boxShadow: "0 2px 6px rgba(0,0,0,0.2)", zIndex: 999 }}>
-        <span style={{ width: 7, height: 7, background: "#fff", borderRadius: "50%", animation: "pulse 1.2s infinite", display: "inline-block" }} />
-        {connected ? "Live" : "Reconnecting…"}
+      <div style={{
+        position: "fixed", bottom: 12, right: 12,
+        background: "rgba(10, 16, 28, 0.88)",
+        backdropFilter: "blur(12px)",
+        border: connected ? "1px solid rgba(16, 185, 129, 0.45)" : "1px solid rgba(239, 68, 68, 0.45)",
+        color: connected ? "#6ee7b7" : "#fca5a5",
+        padding: "5px 12px", borderRadius: 20, fontSize: 11, fontWeight: 600,
+        display: "flex", alignItems: "center", gap: 8,
+        boxShadow: connected ? "0 4px 16px rgba(0,0,0,0.5), 0 0 14px rgba(16, 185, 129, 0.25)" : "0 4px 16px rgba(0,0,0,0.5), 0 0 14px rgba(239, 68, 68, 0.25)",
+        zIndex: 999
+      }}>
+        <span style={{ position: "relative", display: "inline-flex", width: 8, height: 8 }}>
+          <span style={{
+            position: "absolute", inset: 0, borderRadius: "50%",
+            background: connected ? "#10b981" : "#ef4444",
+            animation: "radarWave 2s cubic-bezier(0, 0, 0.2, 1) infinite"
+          }} />
+          <span style={{
+            position: "relative", width: 8, height: 8, borderRadius: "50%",
+            background: connected ? "#10b981" : "#ef4444",
+            boxShadow: connected ? "0 0 8px #10b981" : "0 0 8px #ef4444"
+          }} />
+        </span>
+        {connected ? "Live System" : "Reconnecting…"}
       </div>
 
       {/* ── Consultation booked toast ── */}
       {consultToast && (
         <div style={{
           position: "fixed", bottom: 60, right: 16,
-          background: "#1a237e", color: "#fff",
-          borderRadius: 14, padding: "14px 18px",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.28)",
-          zIndex: 1000, maxWidth: 320,
-          animation: "slideInRight 0.3s ease-out",
-          display: "flex", flexDirection: "column", gap: 6,
+          background: "rgba(13, 20, 36, 0.92)",
+          backdropFilter: "blur(16px)",
+          color: "#f8fafc",
+          border: "1px solid rgba(229, 169, 80, 0.4)",
+          borderRadius: 14, padding: "16px 20px",
+          boxShadow: "0 12px 40px rgba(0,0,0,0.65), 0 0 24px rgba(229, 169, 80, 0.2)",
+          zIndex: 1000, maxWidth: 330,
+          animation: "slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+          display: "flex", flexDirection: "column", gap: 8,
         }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-            <span style={{ fontSize: 14, fontWeight: 600 }}>📋 Consultation Booked!</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: "var(--color-gold-light)" }}>📋 Consultation Booked!</span>
             <button
               onClick={() => { setConsultToast(null); clearTimeout(toastTimerRef.current); }}
-              style={{ background: "none", border: "none", color: "rgba(255,255,255,0.7)", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 0, flexShrink: 0 }}
+              style={{ background: "none", border: "none", color: "rgba(255,255,255,0.6)", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 0, flexShrink: 0 }}
             >×</button>
           </div>
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.85)", lineHeight: 1.5 }}>
-            <div><strong>{consultToast.name || consultToast.phone}</strong></div>
+          <div style={{ fontSize: 12, color: "#cbd5e1", lineHeight: 1.5 }}>
+            <div style={{ fontWeight: 600, color: "#fff" }}>{consultToast.name || consultToast.phone}</div>
             <div>📞 {consultToast.mobile}</div>
             <div>🕐 Best time: {consultToast.best_time}</div>
           </div>
@@ -490,7 +514,14 @@ function Dashboard({ authUser, onLogout }) {
               if (user) selectUser(user);
               setConsultToast(null);
             }}
-            style={{ marginTop: 4, padding: "6px 12px", background: "#fff", color: "#1a237e", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 600, alignSelf: "flex-start" }}
+            style={{
+              marginTop: 4, padding: "7px 14px",
+              background: "linear-gradient(135deg, #e5a950 0%, #d97706 100%)",
+              color: "#070e1b", border: "none", borderRadius: 8,
+              cursor: "pointer", fontSize: 12, fontWeight: 700,
+              alignSelf: "flex-start",
+              boxShadow: "0 2px 10px rgba(229, 169, 80, 0.35)",
+            }}
           >
             Open Chat →
           </button>
@@ -514,15 +545,20 @@ function Dashboard({ authUser, onLogout }) {
 
 const barStyle = {
   display: "flex", alignItems: "center", padding: "10px 20px",
-  background: "linear-gradient(135deg, var(--color-navy) 0%, var(--color-navy-dark) 100%)",
-  borderBottom: "3px solid var(--color-gold)",
-  flexShrink: 0, boxShadow: "0 2px 8px rgba(3,36,79,0.25)", gap: 12,
+  background: "linear-gradient(180deg, rgba(13, 22, 38, 0.96) 0%, rgba(7, 13, 23, 0.98) 100%)",
+  backdropFilter: "blur(16px)",
+  borderBottom: "1px solid rgba(229, 169, 80, 0.28)",
+  boxShadow: "0 4px 20px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(229, 169, 80, 0.25)",
+  flexShrink: 0, gap: 12, position: "relative", zIndex: 10,
 };
 
-const btnStyle = (bg, color) => ({
+const btnStyle = (bg, color, border = "1px solid rgba(255, 255, 255, 0.1)") => ({
   padding: "6px 14px", background: bg, color,
-  border: "none", borderRadius: 20, cursor: "pointer",
+  border: border, borderRadius: 20, cursor: "pointer",
   fontWeight: 600, fontSize: 12, whiteSpace: "nowrap",
+  transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+  boxShadow: "0 2px 8px rgba(0, 0, 0, 0.25)",
+  display: "inline-flex", alignItems: "center", gap: 6,
 });
 
 // ── Top-level App Component ──────────────────────────────────────────────

@@ -31,28 +31,30 @@
   
   .filterBar {
     padding: 16px 24px;
-    border-bottom: 1px solid var(--color-border-tertiary);
-    background: linear-gradient(180deg, #fbfcfe 0%, #f7f8fb 100%);
+    border-bottom: 1px solid rgba(229, 169, 80, 0.15);
+    background: rgba(10, 16, 28, 0.75);
     flex-shrink: 0;
   }
   
   .searchInput {
     width: 100%;
     box-sizing: border-box;
-    border: 1px solid #dde3ec;
+    border: 1px solid rgba(229, 169, 80, 0.2);
     border-radius: 10px;
     padding: 10px 14px;
     font-size: 14px;
     margin-bottom: 10px;
-    background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Ccircle cx='7' cy='7' r='5.5'/%3E%3Cpath d='M15 15l-3.5-3.5' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat 12px center;
+    color: #f8fafc;
+    background: rgba(255, 255, 255, 0.05) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23e5a950' stroke-width='2'%3E%3Ccircle cx='7' cy='7' r='5.5'/%3E%3Cpath d='M15 15l-3.5-3.5' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat 12px center;
     padding-left: 36px;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
   
   .searchInput:focus {
     outline: none;
-    border-color: var(--color-navy-light);
-    box-shadow: 0 0 0 3px rgba(3, 36, 79, 0.12);
+    border-color: var(--color-gold);
+    box-shadow: 0 0 14px rgba(229, 169, 80, 0.3);
+    background: rgba(255, 255, 255, 0.08);
   }
   
   .filterRow {
@@ -64,10 +66,11 @@
   
   .segmented {
     display: inline-flex;
-    background: #eef1f6;
+    background: rgba(255, 255, 255, 0.06);
     border-radius: 10px;
     padding: 3px;
     gap: 2px;
+    border: 1px solid rgba(229, 169, 80, 0.15);
   }
   
   .segmentBtn {
@@ -76,37 +79,39 @@
     padding: 7px 14px;
     font-size: 13px;
     font-weight: 600;
-    color: #64748b;
+    color: #94a3b8;
     border-radius: 8px;
     cursor: pointer;
-    transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease, transform 0.1s ease;
+    transition: all 0.2s ease;
     white-space: nowrap;
   }
   
   .segmentBtn:hover {
-    color: var(--color-navy);
+    color: #f8fafc;
+    background: rgba(255, 255, 255, 0.05);
     transform: translateY(-1px);
   }
   
   .segmentBtnActive {
-    background: linear-gradient(135deg, var(--color-navy) 0%, var(--color-navy-light) 100%);
-    color: #fff;
-    box-shadow: 0 2px 8px rgba(3, 36, 79, 0.35);
+    background: linear-gradient(135deg, #e5a950 0%, #d97706 100%);
+    color: #070e1b !important;
+    font-weight: 700;
+    box-shadow: 0 0 12px rgba(229, 169, 80, 0.35);
   }
   
   .segmentBtnActive:hover {
-    color: #fff;
+    color: #070e1b !important;
     transform: translateY(-1px);
   }
   
   .filterSelect,
   .dateInput {
-    border: 1px solid #dde3ec;
+    border: 1px solid rgba(229, 169, 80, 0.2);
     border-radius: 8px;
     padding: 7px 10px;
     font-size: 13px;
-    color: #334155;
-    background: #fff;
+    color: #f8fafc;
+    background: rgba(20, 29, 49, 0.85);
     cursor: pointer;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
@@ -114,24 +119,25 @@
   .filterSelect:hover,
   .dateInput:hover {
     border-color: var(--color-gold);
+    box-shadow: 0 0 10px rgba(229, 169, 80, 0.2);
   }
   
   .filterSelect:focus,
   .dateInput:focus {
     outline: none;
-    border-color: var(--color-navy-light);
-    box-shadow: 0 0 0 3px rgba(3, 36, 79, 0.1);
+    border-color: var(--color-gold);
+    box-shadow: 0 0 12px rgba(229, 169, 80, 0.3);
   }
   
   .dateInput {
-    color: #64748b;
+    color: #cbd5e1;
     min-width: 132px;
   }
   
   .clearBtn {
     border: none;
     background: transparent;
-    color: var(--color-red);
+    color: #fda4af;
     font-size: 12.5px;
     font-weight: 700;
     cursor: pointer;
@@ -142,7 +148,7 @@
   }
   
   .clearBtn:hover {
-    background: #fef2f2;
+    background: rgba(225, 29, 72, 0.15);
     transform: translateY(-1px);
   }
   
@@ -199,40 +205,41 @@
     position: relative;
     display: flex;
     gap: 14px;
-    border: 1px solid #e9edf3;
+    border: 1px solid rgba(229, 169, 80, 0.18);
     border-left: 3px solid transparent;
     border-radius: 14px;
     padding: 14px 16px;
-    background: #fff;
+    background: rgba(20, 29, 49, 0.65);
+    backdrop-filter: blur(12px);
     overflow: hidden;
     animation: fade-up 0.28s ease-out both;
-    transition: border-color 0.18s ease, box-shadow 0.22s ease,
-                background 0.6s ease, transform 0.18s ease;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
   
   .card:hover {
     border-color: var(--color-gold);
     border-left-color: var(--color-gold);
-    box-shadow: 0 8px 20px rgba(3, 36, 79, 0.1);
+    background: rgba(28, 41, 69, 0.85);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 16px rgba(229, 169, 80, 0.2);
     transform: translateY(-2px);
   }
   
   .justBooked {
-    background: #eef8f0;
-    border-color: #86d39c;
-    border-left-color: #22a35a;
+    background: rgba(16, 185, 129, 0.12);
+    border-color: rgba(16, 185, 129, 0.4);
+    border-left-color: #10b981;
     animation: fade-up 0.28s ease-out both, pulseGlow 1.6s ease-in-out;
   }
   
   @keyframes pulseGlow {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
-    30% { box-shadow: 0 0 0 5px rgba(22, 163, 74, 0.2); }
+    0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    30% { box-shadow: 0 0 0 5px rgba(16, 185, 129, 0.25); }
   }
   
   .stale {
-    border-color: #f3c98c;
+    border-color: rgba(229, 169, 80, 0.4);
     border-left-color: var(--color-gold);
-    background: #fffaf0;
+    background: rgba(229, 169, 80, 0.08);
   }
   
   .cardLeft {
@@ -243,14 +250,15 @@
     width: 42px;
     height: 42px;
     border-radius: 11px;
-    background: linear-gradient(135deg, var(--color-navy) 0%, var(--color-navy-light) 55%, var(--color-gold) 130%);
+    background: linear-gradient(135deg, #070e1b 0%, #162f56 60%, #e5a950 140%);
     color: #fff;
     font-size: 16px;
     font-weight: 700;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 3px 8px rgba(3, 36, 79, 0.25);
+    border: 1px solid rgba(229, 169, 80, 0.25);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   }
   
   .cardBody {
@@ -269,13 +277,13 @@
   .name {
     font-size: 14.5px;
     font-weight: 700;
-    color: #0f172a;
+    color: #f8fafc;
     cursor: pointer;
     transition: color 0.12s ease;
   }
   
   .name:hover {
-    color: var(--color-navy-light);
+    color: var(--color-gold-light);
     text-decoration: underline;
   }
   
@@ -292,18 +300,20 @@
     letter-spacing: 0.02em;
     padding: 3px 8px;
     border-radius: 6px;
-    background: #eef1f6;
-    color: #64748b;
+    background: rgba(255, 255, 255, 0.06);
+    color: #cbd5e1;
   }
   
   .tagBiz {
-    background: #fdeaec;
-    color: var(--color-red);
+    background: rgba(225, 29, 72, 0.15);
+    color: #fda4af;
+    border: 1px solid rgba(225, 29, 72, 0.3);
   }
   
   .tagLaw {
-    background: var(--color-gold-soft);
-    color: #9a5b13;
+    background: rgba(229, 169, 80, 0.15);
+    color: var(--color-gold-light);
+    border: 1px solid rgba(229, 169, 80, 0.3);
   }
   
   .tagMuted {
@@ -311,8 +321,8 @@
     font-weight: 600;
     padding: 3px 8px;
     border-radius: 6px;
-    background: #f1f5f9;
-    color: #94a3b8;
+    background: rgba(255, 255, 255, 0.05);
+    color: #64748b;
   }
   
   .staleBadge {
@@ -323,8 +333,9 @@
     font-weight: 700;
     padding: 3px 8px;
     border-radius: 6px;
-    background: var(--color-gold-soft);
-    color: #9a5b13;
+    background: rgba(229, 169, 80, 0.15);
+    color: var(--color-gold-light);
+    border: 1px solid rgba(229, 169, 80, 0.25);
   }
   
   .staleBadge::before {
@@ -333,6 +344,7 @@
     height: 6px;
     border-radius: 50%;
     background: var(--color-gold);
+    box-shadow: 0 0 6px var(--color-gold);
     animation: dot-pulse 1.4s ease-in-out infinite;
   }
   
@@ -341,12 +353,12 @@
     flex-wrap: wrap;
     gap: 14px;
     font-size: 13px;
-    color: #475569;
+    color: #cbd5e1;
     margin-bottom: 6px;
   }
   
   .detailsMuted {
-    color: #b0b8c4;
+    color: #64748b;
     font-style: italic;
   }
   
@@ -355,7 +367,7 @@
     flex-wrap: wrap;
     gap: 12px;
     font-size: 11.5px;
-    color: #b0b8c4;
+    color: #94a3b8;
     margin-bottom: 10px;
   }
   
@@ -368,13 +380,13 @@
   .statusSelect,
   .assignSelect,
   .scheduleInput {
-    border: 1px solid #dde3ec;
+    border: 1px solid rgba(229, 169, 80, 0.2);
     border-radius: 8px;
     padding: 6px 10px;
     font-size: 12.5px;
     font-weight: 600;
-    background: #fff;
-    color: #334155;
+    background: rgba(20, 29, 49, 0.85);
+    color: #f8fafc;
     cursor: pointer;
     transition: border-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
   }
@@ -383,24 +395,24 @@
   .assignSelect:hover,
   .scheduleInput:hover {
     transform: translateY(-1px);
-    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
   
   .statusSelect:focus,
   .assignSelect:focus,
   .scheduleInput:focus {
     outline: none;
-    border-color: var(--color-navy-light);
+    border-color: var(--color-gold);
   }
   
-  .status_new { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
-  .status_contacted { background: var(--color-gold-soft); color: #9a5b13; border-color: #f4b56a; }
-  .status_scheduled { background: #f5f3ff; color: #6d28d9; border-color: #ddd6fe; }
-  .status_completed { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
-  .status_no_show { background: #fdeaec; color: var(--color-red-dark); border-color: #f6c3c8; }
+  .status_new { background: rgba(59, 130, 246, 0.15); color: #93c5fd; border-color: rgba(59, 130, 246, 0.35); }
+  .status_contacted { background: rgba(229, 169, 80, 0.15); color: var(--color-gold-light); border-color: rgba(229, 169, 80, 0.35); }
+  .status_scheduled { background: rgba(168, 85, 247, 0.15); color: #c084fc; border-color: rgba(168, 85, 247, 0.35); }
+  .status_completed { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.35); }
+  .status_no_show { background: rgba(225, 29, 72, 0.15); color: #fda4af; border-color: rgba(225, 29, 72, 0.35); }
   
   .scheduleInput {
-    color: #64748b;
+    color: #cbd5e1;
     font-weight: 500;
   }
   
@@ -418,15 +430,15 @@
     position: relative;
     overflow: hidden;
     border: none;
-    background: linear-gradient(135deg, var(--color-navy) 0%, var(--color-navy-light) 100%);
-    color: #fff;
+    background: linear-gradient(135deg, #e5a950 0%, #d97706 100%);
+    color: #070e1b;
     font-size: 12.5px;
     font-weight: 700;
     padding: 9px 12px;
     border-radius: 9px;
     cursor: pointer;
     white-space: nowrap;
-    box-shadow: 0 2px 6px rgba(3, 36, 79, 0.3);
+    box-shadow: 0 2px 10px rgba(229, 169, 80, 0.35);
     transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.18s ease;
   }
   
@@ -441,7 +453,8 @@
   
   .openBtn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(3, 36, 79, 0.4);
+    background: linear-gradient(135deg, #f6c87a 0%, #e5a950 100%);
+    box-shadow: 0 6px 18px rgba(229, 169, 80, 0.5);
   }
   
   .openBtn:hover::after {
@@ -453,9 +466,9 @@
   }
   
   .deleteBtn {
-    border: 1px solid #f6c3c8;
-    background: #fff;
-    color: var(--color-red);
+    border: 1px solid rgba(225, 29, 72, 0.35);
+    background: rgba(225, 29, 72, 0.12);
+    color: #fda4af;
     font-size: 12px;
     font-weight: 700;
     padding: 8px 12px;
@@ -465,11 +478,11 @@
   }
   
   .deleteBtn:hover {
-    background: var(--color-red);
+    background: #e11d48;
     color: #fff;
-    border-color: var(--color-red);
+    border-color: #e11d48;
     transform: translateY(-2px);
-    box-shadow: 0 6px 14px rgba(202, 0, 14, 0.3);
+    box-shadow: 0 6px 14px rgba(225, 29, 72, 0.4);
   }
   
   .deleteBtn:active {

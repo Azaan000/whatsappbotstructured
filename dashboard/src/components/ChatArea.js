@@ -6,7 +6,7 @@ function statusIcon(status) {
   return { sent: "✓", delivered: "✓✓", read: "✓✓✓", sending: "⋯", failed: "⚠" }[status] || "";
 }
 function statusColor(status) {
-  return { read: "#0000FF", delivered: "#7393B3", sent: "#7393B3", failed: "#ff6b6b" }[status] || "#a0c4ff";
+  return { read: "var(--color-gold-light, #f6c87a)", delivered: "#94a3b8", sent: "#64748b", failed: "#f87171" }[status] || "#94a3b8";
 }
 function formatDateLabel(timestamp) {
   if (!timestamp) return null;
@@ -247,8 +247,15 @@ export default function ChatArea({
               {user.name && <span className={s.headerPhone}>({user.phone})</span>}
             </div>
             <div className={s.headerMeta}>
-              <span className={s.modePill} style={{ background: user.human_mode ? "#fff3e0" : "#e8f5e9", color: user.human_mode ? "#e65100" : "#2e7d32" }}>
-                <span className={s.modePillDot} style={{ background: user.human_mode ? "#ff9800" : "#4caf50" }} />
+              <span className={s.modePill} style={{
+                background: user.human_mode ? "rgba(245, 158, 11, 0.15)" : "rgba(16, 185, 129, 0.15)",
+                color: user.human_mode ? "#fcd34d" : "#6ee7b7",
+                border: user.human_mode ? "1px solid rgba(245, 158, 11, 0.35)" : "1px solid rgba(16, 185, 129, 0.35)",
+              }}>
+                <span className={s.modePillDot} style={{
+                  background: user.human_mode ? "#f59e0b" : "#10b981",
+                  boxShadow: user.human_mode ? "0 0 8px #f59e0b" : "0 0 8px #10b981",
+                }} />
                 {user.human_mode ? "Human mode" : "AI mode"}
               </span>
               {user.tags && <span className={s.tagBadge}>{user.tags}</span>}

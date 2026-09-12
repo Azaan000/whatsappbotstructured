@@ -39,43 +39,46 @@ export default function EditUserModal({ user, onClose, onSaved }) {
         <div className={s.body}>
           {/* User info card */}
           <div style={{
-            background: "#f8f9fa", borderRadius: 10, padding: "12px 14px",
+            background: "rgba(255, 255, 255, 0.05)",
+            border: "1px solid rgba(229, 169, 80, 0.2)",
+            borderRadius: 12, padding: "14px 16px",
             marginBottom: 16, display: "flex", flexDirection: "column", gap: 6,
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: "#111" }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: "#f8fafc" }}>
                 {user.name || user.phone}
               </span>
               {user.human_mode !== undefined && (
                 <span style={{
-                  fontSize: 11, padding: "2px 8px", borderRadius: 10, fontWeight: 500,
-                  background: user.human_mode ? "#fff3e0" : "#e8f5e9",
-                  color: user.human_mode ? "#e65100" : "#2e7d32",
+                  fontSize: 11, padding: "3px 10px", borderRadius: 10, fontWeight: 600,
+                  background: user.human_mode ? "rgba(245, 158, 11, 0.15)" : "rgba(16, 185, 129, 0.15)",
+                  color: user.human_mode ? "#fcd34d" : "#6ee7b7",
+                  border: user.human_mode ? "1px solid rgba(245, 158, 11, 0.3)" : "1px solid rgba(16, 185, 129, 0.3)",
                 }}>
                   {user.human_mode ? "Human mode" : "AI mode"}
                 </span>
               )}
             </div>
             {user.name && (
-              <span style={{ fontSize: 11, color: "#999" }}>{user.phone}</span>
+              <span style={{ fontSize: 11, color: "var(--color-gold-light)" }}>{user.phone}</span>
             )}
-            <div style={{ display: "flex", gap: 16, marginTop: 2 }}>
+            <div style={{ display: "flex", gap: 16, marginTop: 2, flexWrap: "wrap" }}>
               {firstSeen && (
-                <span style={{ fontSize: 11, color: "#888" }}>
+                <span style={{ fontSize: 11, color: "#94a3b8" }}>
                   📅 First contact: {new Date(firstSeen).toLocaleDateString([], {
                     day: "numeric", month: "long", year: "numeric",
                   })}
                 </span>
               )}
               {user.last_seen && (
-                <span style={{ fontSize: 11, color: "#888" }}>
+                <span style={{ fontSize: 11, color: "#94a3b8" }}>
                   🕐 Last seen: {new Date(user.last_seen).toLocaleDateString([], {
                     day: "numeric", month: "long", year: "numeric",
                   })}
                 </span>
               )}
             </div>
-            <span style={{ fontSize: 11, color: "#888" }}>
+            <span style={{ fontSize: 11, color: "#94a3b8" }}>
               📨 {user.total_messages || 0} total messages
             </span>
           </div>

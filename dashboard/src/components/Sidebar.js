@@ -236,31 +236,49 @@ export default function Sidebar({
       </div>
 
       {/* Confirm delete */}
+      {/* Confirm delete */}
       {confirmPhone && (
         <div style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+          position: "fixed", inset: 0, background: "rgba(5, 8, 15, 0.78)",
+          backdropFilter: "blur(8px)",
           display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000,
         }}>
           <div style={{
-            background: "#fff", borderRadius: 12, padding: 24,
-            width: 320, boxShadow: "0 10px 40px rgba(0,0,0,0.2)",
+            background: "rgba(14, 21, 37, 0.95)",
+            backdropFilter: "blur(16px)",
+            border: "1px solid rgba(229, 169, 80, 0.28)",
+            borderRadius: 14, padding: 24,
+            width: 320, boxShadow: "0 20px 50px rgba(0,0,0,0.7), 0 0 20px rgba(229, 169, 80, 0.12)",
           }}>
-            <h3 style={{ marginBottom: 8, color: "#333" }}>Delete user?</h3>
-            <p style={{ fontSize: 13, color: "#666", marginBottom: 20 }}>
-              This will permanently delete <strong>{confirmPhone}</strong> and all
+            <h3 style={{ marginBottom: 8, color: "#f8fafc", fontSize: 16 }}>Delete user?</h3>
+            <p style={{ fontSize: 13, color: "#94a3b8", marginBottom: 20, lineHeight: 1.5 }}>
+              This will permanently delete <strong style={{ color: "#f6c87a" }}>{confirmPhone}</strong> and all
               their messages. This cannot be undone.
             </p>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button
                 onClick={() => setConfirmPhone(null)}
-                style={{ padding: "8px 16px", background: "#f5f5f5", border: "1px solid #ddd", borderRadius: 8, cursor: "pointer" }}
+                style={{
+                  padding: "8px 16px",
+                  background: "rgba(255, 255, 255, 0.06)",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                  color: "#cbd5e1", borderRadius: 8, cursor: "pointer",
+                  fontSize: 12, fontWeight: 600,
+                  transition: "background 0.2s",
+                }}
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDelete}
                 disabled={deleting}
-                style={{ padding: "8px 16px", background: "#f44336", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer" }}
+                style={{
+                  padding: "8px 16px",
+                  background: "linear-gradient(135deg, #e11d48 0%, #be123c 100%)",
+                  color: "#fff", border: "none", borderRadius: 8,
+                  cursor: "pointer", fontSize: 12, fontWeight: 700,
+                  boxShadow: "0 0 12px rgba(225, 29, 72, 0.4)",
+                }}
               >
                 {deleting ? "Deleting..." : "Delete"}
               </button>
