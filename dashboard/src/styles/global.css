@@ -79,6 +79,24 @@ body {
   display: none;
 }
 
+/* ── Desktop / base layout ─────────────────────────────────────────────
+   The sidebar (chat list) keeps its own fixed width (set on the Sidebar
+   component itself). The chat pane must explicitly grow to fill the
+   rest of .mainLayout's width — without this, a flex item defaults to
+   content-based sizing and the ChatArea (including the "Welcome to the
+   dashboard" empty state) collapses to a narrow column on the left
+   instead of filling/centering in the remaining space. */
+.sidebarPane {
+  flex-shrink: 0;
+}
+
+.chatPane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 @media (max-width: 768px) {
   .mainLayout {
     position: relative;
