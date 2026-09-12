@@ -286,3 +286,106 @@ def _clean_reply(text: str) -> str:
             continue
         clean_lines.append(line)
     return "\n".join(clean_lines).strip()
+
+
+def _build_fallback_summary(messages, client_name=None, client_phone=None, brand=None):
+    recent = [m.get("message", "") for m in messages if m.get("message")][-4:]
+    inquiry_preview = " | ".join(recent) if recent else "No recent message text available."
+    if len(inquiry_preview) > 160:
+        inquiry_preview = inquiry_preview[:157] + "..."
+    brand_label = "BizAdvise" if brand == "biz" else ("Legals" if brand == "law" else "General")
+    name_label = client_name or "Client"
+    phone_label = client_phone or "Unknown"
+
+    return (
+        f"📋 *CLIENT BRIEFING*\n"
+        f"• *Client*: {name_label} ({phone_label})\n"
+        f"• *Brand*: {brand_label}\n"
+        f"• *Recent Messages*: {inquiry_preview}\n"
+        f"• *Next Action*: Review chat in dashboard or reach out directly."
+    )
+
+
+def generate_chat_summary(messages: list, client_name: str = "", client_phone: str = "", brand: str = "") -> str:
+    """Generate a concise executive WhatsApp briefing card from a customer chat history.
+    Uses OpenRouter AI with an immediate deterministic fallback if the API is unavailable.
+    """
+    if not messages:
+        brand_label = "BizAdvise" if brand == "biz" else ("Legals" if brand == "law" else "General")
+        name_label = client_name or "Client"
+        phone_label = client_phone or "Unknown"
+        return (
+            f"📋 *CLIENT BRIEFING*\n"
+            f"• *Client*: {name_label} ({phone_label})\n"
+            f"• *Brand*: {brand_label}\n"
+            f"• *Status*: No conversation history recorded yet."
+        )
+
+    # Format recent conversation (up to last 20 messages)
+    recent_messages = messages[-20:]
+    lines = []
+    for m in recent_messages:
+        text = (m.get("message") or "").strip()
+        if not text and m.get("file_name"):
+            text = f"[Media: {m.get('file_name')}]"
+        if not text:
+            continue
+        sender = "Client" if m.get("direction") == "user" else "Assistant"
+        lines.append(f"{sender}: {text}")
+
+    transcript = "\n".join(lines)
+    if not transcript.strip():
+        return _build_fallback_summary(messages, client_name, client_phone, brand)
+
+    if not OPENROUTER_API_KEY:
+        return _build_fallback_summary(messages, client_name, client_phone, brand)
+
+    brand_label = "BizAdvise" if brand == "biz" else ("Legals" if brand == "law" else "General")
+    name_label = client_name or "Client"
+    phone_label = client_phone or "Unknown"
+
+    system_prompt = (
+        "You are an executive assistant preparing a quick WhatsApp summary for the business owner.\n"
+        "Generate a structured 4-5 line WhatsApp brief about this client interaction.\n"
+        "Be concise, clear, and professional. Use WhatsApp markdown (*bold*).\n\n"
+        "Format strictly as:\n"
+        "📋 *CLIENT BRIEFING*\n"
+        f"• *Client*: {name_label} ({phone_label})\n"
+        f"• *Brand*: {brand_label}\n"
+        "• *Inquiry*: [1-2 sentences summarizing what they inquired about or need]\n"
+        "• *Status*: [Current status, e.g. Consultation Booked, In Discussion, Follow-up Required]\n"
+        "• *Next Action*: [Recommended immediate next step for the owner/team]\n\n"
+        "Do not include conversational filler, preamble, disclaimers, or extra lines."
+    )
+
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": AI_MODEL,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Here is the customer chat history:\n{transcript}"},
+        ],
+    }
+
+    try:
+        res = _session.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=15,
+        )
+        if res.status_code == 200:
+            data = res.json()
+            if "choices" in data and data["choices"]:
+                reply = (data["choices"][0].get("message", {}) or {}).get("content", "") or ""
+                cleaned = _clean_reply(reply)
+                if cleaned:
+                    return cleaned
+        print(f"[Summary AI] Unexpected response or status {res.status_code}: {res.text[:200]}")
+    except Exception as e:
+        print(f"[Summary AI] Generation error: {e}")
+
+    return _build_fallback_summary(messages, client_name, client_phone, brand)

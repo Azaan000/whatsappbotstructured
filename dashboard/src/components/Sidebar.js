@@ -24,6 +24,44 @@ function avatarColor(phone) {
   return AVATAR_COLORS[sum % AVATAR_COLORS.length];
 }
 
+function formatSidebarTime(timestamp) {
+  if (!timestamp) return "";
+  const date = new Date(timestamp);
+  if (isNaN(date.getTime())) return "";
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const msgDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  const diffMs = today.getTime() - msgDate.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+  // Today -> "10:45 AM"
+  if (msgDate.getTime() === today.getTime()) {
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  // Yesterday -> "Yesterday"
+  if (msgDate.getTime() === yesterday.getTime()) {
+    return "Yesterday";
+  }
+
+  // Within the last 6 days -> Weekday name (e.g. "Mon", "Tue")
+  if (diffDays > 1 && diffDays < 7) {
+    return date.toLocaleDateString([], { weekday: "short" });
+  }
+
+  // Same year -> e.g. "15 Aug"
+  if (date.getFullYear() === now.getFullYear()) {
+    return date.toLocaleDateString([], { day: "numeric", month: "short" });
+  }
+
+  // Different year -> e.g. "15/08/25"
+  return date.toLocaleDateString([], { day: "numeric", month: "numeric", year: "2-digit" });
+}
+
 export default function Sidebar({
   users, selectedPhone, connected, unreadCounts,
   highlightedUsers, bookedConsultPhones, onSelect, onExportAll, onUserDeleted, onMarkAllRead,
@@ -160,10 +198,11 @@ export default function Sidebar({
                   </div>
                   <div className={s.rightCol}>
                     {user.last_seen && (
-                      <span className={s.time}>
-                        {new Date(user.last_seen).toLocaleTimeString([], {
-                          hour: "2-digit", minute: "2-digit",
-                        })}
+                      <span
+                        className={s.time}
+                        title={new Date(user.last_seen).toLocaleString()}
+                      >
+                        {formatSidebarTime(user.last_seen)}
                       </span>
                     )}
                     {count > 0 && (

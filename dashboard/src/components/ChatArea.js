@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from "react";
 import s from "../styles/ChatArea.module.css";
-import { BASE, getToken } from "../api/client";
+import { BASE, getToken, api } from "../api/client";
 
 function statusIcon(status) {
   return { sent: "✓", delivered: "✓✓", read: "✓✓✓", sending: "⋯", failed: "⚠" }[status] || "";
@@ -145,6 +145,8 @@ export default function ChatArea({
   const [search, setSearch] = useState("");
   const [file, setFile] = useState(null);
   const [showTooltip, setShowTooltip] = useState(null);
+  const [notifying, setNotifying] = useState(false);
+  const [notifyFeedback, setNotifyFeedback] = useState(null);
   const endRef = useRef(null);
   const fileRef = useRef(null);
   const prevPhoneRef = useRef(null);
@@ -152,7 +154,11 @@ export default function ChatArea({
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, typing]);
 
   useEffect(() => {
-    if (user?.phone !== prevPhoneRef.current) { seenKeys.clear(); prevPhoneRef.current = user?.phone; }
+    if (user?.phone !== prevPhoneRef.current) {
+      seenKeys.clear();
+      prevPhoneRef.current = user?.phone;
+      setNotifyFeedback(null);
+    }
   }, [user?.phone]);
 
   const handleSend = () => {
@@ -163,6 +169,29 @@ export default function ChatArea({
     if (!file || sending) return;
     onSendFile(file); setFile(null);
     if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const handleNotifyOwner = async () => {
+    if (!user?.phone || notifying) return;
+    setNotifying(true);
+    setNotifyFeedback(null);
+    try {
+      const res = await api.notifyOwner(user.phone);
+      const recipientCount = res?.sent_to?.length || 1;
+      setNotifyFeedback({
+        type: "success",
+        message: `Chat summary sent to ${recipientCount} owner number${recipientCount > 1 ? "s" : ""} via WhatsApp!`,
+      });
+      setTimeout(() => setNotifyFeedback(null), 5000);
+    } catch (err) {
+      setNotifyFeedback({
+        type: "error",
+        message: err.message || "Failed to notify owner via WhatsApp.",
+      });
+      setTimeout(() => setNotifyFeedback(null), 6000);
+    } finally {
+      setNotifying(false);
+    }
   };
 
   const filtered = search
@@ -190,6 +219,7 @@ export default function ChatArea({
   }
 
   const actionBtns = [
+    { key: "notify", icon: notifying ? "⏳" : "📢", label: notifying ? "Sending..." : "Notify Owner", action: handleNotifyOwner, color: "#e91e63", disabled: notifying },
     { key: "toggle", icon: user.human_mode ? "🤖" : "👤", label: user.human_mode ? "Switch to AI" : "Switch to Human", action: onToggleMode, color: user.human_mode ? "#0b5cff" : "#ff9800" },
     { key: "edit",   icon: "✏️",  label: "Edit user",   action: onEdit,   color: "#9c27b0" },
     { key: "export", icon: "⬇️", label: "Export chat",  action: onExport, color: "#4caf50" },
@@ -229,9 +259,10 @@ export default function ChatArea({
         <div className={s.headerActions}>
           {actionBtns.map((btn) => (
             <button key={btn.key} className={s.actionBtn} onClick={btn.action}
+              disabled={btn.disabled}
               onMouseEnter={() => setShowTooltip(btn.key)}
               onMouseLeave={() => setShowTooltip(null)}
-              style={{ "--btn-color": btn.color }}
+              style={{ "--btn-color": btn.color, opacity: btn.disabled ? 0.6 : 1 }}
             >
               <span className={s.actionBtnIcon}>{btn.icon}</span>
               <span className={`${s.actionBtnLabel} ${showTooltip === btn.key ? s.actionBtnLabelVisible : ""}`}>
@@ -241,6 +272,25 @@ export default function ChatArea({
           ))}
         </div>
       </div>
+
+      {/* Notify Owner Feedback Banner */}
+      {notifyFeedback && (
+        <div className={`${s.notifyBanner} ${notifyFeedback.type === "success" ? s.notifyBannerSuccess : s.notifyBannerError}`}>
+          <span>
+            {notifyFeedback.type === "success" ? "✅ " : "⚠️ "}
+            {notifyFeedback.message}
+          </span>
+          <button
+            type="button"
+            className={s.notifyBannerClose}
+            onClick={() => setNotifyFeedback(null)}
+            aria-label="Dismiss alert"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
 
       {/* Search */}
       <div className={s.searchBar}>
@@ -276,7 +326,10 @@ export default function ChatArea({
                     </div>
                   )}
                 </div>
-                <div className={`${s.bubbleTime} ${isUser ? s.bubbleTimeUser : s.bubbleTimeBot}`}>
+                <div
+                  className={`${s.bubbleTime} ${isUser ? s.bubbleTimeUser : s.bubbleTimeBot}`}
+                  title={msg.timestamp ? new Date(msg.timestamp).toLocaleString() : undefined}
+                >
                   {msg.timestamp && new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   {!isUser && (
                     <span style={{ marginLeft: 4, color: statusColor(msg.status), fontSize: 11, fontWeight: "bold" }}>

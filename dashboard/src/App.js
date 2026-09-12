@@ -13,7 +13,7 @@ import EditUserModal from "./components/EditUserModal";
 import ConsultationsModal from "./components/ConsultationsModal";
 import Login from "./components/Login";
 import AccountModal from "./components/AccountModal";
-import { playNotificationSound, unlockAudioOnFirstGesture, requestNotificationPermission, trace } from "./utils/notificationSound";
+import { playNotificationSound, playMessageSound, unlockAudioOnFirstGesture, requestNotificationPermission, trace } from "./utils/notificationSound";
 
 const CONSULT_KEYWORDS = [
   "consult", "book", "appointment", "talk to", "speak to",
@@ -42,13 +42,13 @@ function markConsultSeen(phone) {
   saveSeenConsults(seen);
 }
 
-function showBrowserNotification(title, body) {
+function showBrowserNotification(title, body, requireInteraction = false) {
   if ("Notification" in window && Notification.permission === "granted") {
     const n = new Notification(title, {
       body,
       icon: "/favicon.ico",
       badge: "/favicon.ico",
-      requireInteraction: true,
+      requireInteraction,
     });
     n.onclick = () => { window.focus(); n.close(); };
   }
@@ -122,7 +122,16 @@ function Dashboard({ authUser, onLogout }) {
     ));
 
     if (data.direction === "user") {
+      playMessageSound();
       incrementUnread(data.phone);
+
+      if (document.hidden || selectedPhoneRef.current !== data.phone) {
+        const sender = usersRef.current.find((u) => u.phone === data.phone);
+        const senderName = sender?.name || data.phone;
+        const preview = data.message || (data.message_type && data.message_type !== "text" ? `[${data.message_type}]` : "New message");
+        showBrowserNotification(`💬 ${senderName}`, preview);
+      }
+
       if (isConsultMessage(data.message) && selectedPhoneRef.current !== data.phone) {
         const seen = getSeenConsults();
         seen.delete(data.phone);
@@ -219,7 +228,8 @@ function Dashboard({ authUser, onLogout }) {
 
     showBrowserNotification(
       "📋 New Consultation Booked!",
-      `${name || phone} — ${mobile} — Best time: ${best_time}`
+      `${name || phone} — ${mobile} — Best time: ${best_time}`,
+      true
     );
 
     if (isViewingThisChat) {

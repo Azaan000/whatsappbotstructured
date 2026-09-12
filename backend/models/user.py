@@ -93,6 +93,22 @@ def get_user_source(phone) -> str:
         conn.close()
 
 
+def get_user(phone) -> dict:
+    """Retrieve full user row as dict by phone number."""
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT * FROM users WHERE phone=?", (phone,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        print(f"get_user error: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+
 def toggle_user_mode(phone, socketio):
     conn = get_db()
     cursor = conn.cursor()

@@ -8,10 +8,11 @@ from io import StringIO, BytesIO
 from flask import Blueprint, request, jsonify, send_file, current_app
 from werkzeug.utils import secure_filename
 
-from models.user import get_all_users, toggle_user_mode, update_user_meta, mark_read
+from models.user import get_all_users, toggle_user_mode, update_user_meta, mark_read, get_user
 from models.message import save_message, get_messages, get_all_messages_for_export
 from models.database import get_db
-from bot.whatsapp_handler import send_text, send_media, resolve_media_type
+from bot.whatsapp_handler import send_text, send_media, resolve_media_type, notify_owner, get_owner_phones
+from bot.ai_client import generate_chat_summary
 from utils.auth import require_auth
 
 _START_TIME = _time.time()
@@ -179,6 +180,48 @@ def serve_media(filename):
     if not os.path.exists(filepath):
         return jsonify({"error": "File not found"}), 404
     return send_file(filepath)
+
+
+# ── Owner Notification ─────────────────────────────────────────────────────
+
+@chat_bp.route("/notify-owner/<phone>", methods=["POST"])
+@chat_bp.route("/<phone>/notify-owner", methods=["POST"])
+@require_auth
+def notify_owner_route(phone):
+    user = get_user(phone)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    owner_phones = get_owner_phones()
+    if not owner_phones:
+        return jsonify({
+            "error": "No owner phone numbers configured in backend (.env OWNER_PHONE_NUMBERS)"
+        }), 400
+
+    messages = get_messages(phone)
+    client_name = user.get("name") or ""
+    brand = user.get("source") or ""
+
+    summary = generate_chat_summary(
+        messages=messages,
+        client_name=client_name,
+        client_phone=phone,
+        brand=brand,
+    )
+
+    result = notify_owner(summary)
+    if not result.get("success"):
+        return jsonify({
+            "error": "Failed to deliver WhatsApp message to owner",
+            "details": result,
+        }), 502
+
+    return jsonify({
+        "success": True,
+        "summary": summary,
+        "sent_to": result.get("sent_to", []),
+        "failed": result.get("failed", []),
+    })
 
 
 # ── Export ─────────────────────────────────────────────────────────────────

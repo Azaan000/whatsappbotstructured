@@ -161,6 +161,9 @@ export const api = {
   deleteUser: (phone) =>
     request(`/delete-user/${phone}`, { method: "DELETE" }),
 
+  notifyOwner: (phone) =>
+    request(`/notify-owner/${phone}`, { method: "POST" }),
+
   getAnalytics: () => request("/analytics"),
 
   getConsultations: (filters = {}) => {

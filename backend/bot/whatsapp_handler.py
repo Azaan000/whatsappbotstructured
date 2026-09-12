@@ -88,6 +88,62 @@ def send_text(to: str, message: str):
         return False, None
 
 
+def normalize_owner_phone(phone_str: str) -> str:
+    """Normalize phone number to international format without + or leading zero.
+    e.g. '03410265630' -> '923410265630', '+92 341 0265630' -> '923410265630'.
+    """
+    digits = "".join(c for c in phone_str if c.isdigit())
+    if digits.startswith("00"):
+        digits = digits[2:]
+    if digits.startswith("03") and len(digits) == 11:
+        return "92" + digits[1:]
+    if digits.startswith("3") and len(digits) == 10:
+        return "92" + digits
+    return digits
+
+
+def get_owner_phones() -> list:
+    """Retrieve and normalize all configured owner phone numbers from environment."""
+    raw = os.getenv("OWNER_PHONE_NUMBERS") or os.getenv("OWNER_PHONE_NUMBER") or ""
+    if not raw:
+        return []
+    phones = []
+    for item in raw.replace(";", ",").split(","):
+        cleaned = item.strip()
+        if cleaned:
+            norm = normalize_owner_phone(cleaned)
+            if norm and norm not in phones:
+                phones.append(norm)
+    return phones
+
+
+def notify_owner(message: str) -> dict:
+    """Send a notification message to all configured owner phone numbers.
+    Returns a dict with delivery status and recipient lists.
+    """
+    recipients = get_owner_phones()
+    if not recipients:
+        print("[Owner Notification] No owner phone numbers configured in environment.")
+        return {"success": False, "sent_to": [], "failed": [], "error": "No owner numbers configured"}
+
+    sent_to = []
+    failed = []
+    for phone in recipients:
+        success, msg_id = send_text(phone, message)
+        if success:
+            sent_to.append(phone)
+            print(f"[Owner Notification] Sent to {phone} (msg_id: {msg_id})")
+        else:
+            failed.append(phone)
+            print(f"[Owner Notification] Failed to send to {phone}")
+
+    return {
+        "success": len(sent_to) > 0,
+        "sent_to": sent_to,
+        "failed": failed,
+    }
+
+
 _BIZ_SECTION = {
     "title": "BizAdvise Services",
     "rows": [

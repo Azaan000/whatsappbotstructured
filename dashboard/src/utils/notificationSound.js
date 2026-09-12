@@ -70,6 +70,41 @@ export function playNotificationSound() {
   }
 }
 
+// Play a crisp, pleasant two-tone chime when an incoming customer text arrives
+export function playMessageSound() {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const schedule = () => {
+      const playTone = (freq, start, duration, gain = 0.22) => {
+        const osc = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        osc.frequency.value = freq;
+        osc.type = "sine";
+        gainNode.gain.setValueAtTime(0, ctx.currentTime + start);
+        gainNode.gain.linearRampToValueAtTime(gain, ctx.currentTime + start + 0.015);
+        gainNode.gain.linearRampToValueAtTime(0, ctx.currentTime + start + duration);
+        osc.start(ctx.currentTime + start);
+        osc.stop(ctx.currentTime + start + duration + 0.05);
+      };
+      // Pleasant high double-ping (A5 -> E6)
+      playTone(880, 0, 0.08, 0.2);
+      playTone(1318.5, 0.085, 0.14, 0.25);
+    };
+
+    if (ctx.state === "suspended") {
+      ctx.resume().then(schedule).catch(() => {});
+    } else {
+      schedule();
+    }
+  } catch (e) {
+    console.log("Audio not available:", e);
+  }
+}
+
 // Request browser notification permission once
 export function requestNotificationPermission() {
   if ("Notification" in window && Notification.permission === "default") {

@@ -18,7 +18,7 @@ from models.database import get_db
 from bot.ai_client import ask_ai
 from bot.whatsapp_handler import (
     send_text, send_main_menu, send_service_menu, send_greeting_buttons,
-    send_nav_buttons,
+    send_nav_buttons, notify_owner,
 )
 from utils.logger import get_logger
 
@@ -1868,6 +1868,18 @@ def _handle_contact_collection(phone, text, socketio):
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         })
         log.info(f"Consultation booked: {name} ({mobile}) — best time: {best_time}")
+
+        # Dispatch WhatsApp booking alert to business owner(s) asynchronously
+        owner_alert = (
+            f"📅 *NEW CONSULTATION BOOKED*\n"
+            f"• *Name*: {name}\n"
+            f"• *Mobile*: {mobile}\n"
+            f"• *WhatsApp Phone*: {phone}\n"
+            f"• *Preferred Time*: {best_time}\n"
+            f"• *Service*: {service_label or 'General Legal / Biz'}\n"
+            f"• *Booked At*: {datetime.now().strftime('%Y-%m-%d %I:%M %p')}"
+        )
+        _executor.submit(notify_owner, owner_alert)
 
 
 def _send_greeting_reply(phone, socketio):
