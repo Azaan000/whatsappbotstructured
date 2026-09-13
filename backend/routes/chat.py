@@ -87,6 +87,7 @@ def delete_user(phone):
         if not cursor.fetchone():
             return jsonify({"error": "User not found"}), 404
         cursor.execute("DELETE FROM messages WHERE phone=?", (phone,))
+        cursor.execute("DELETE FROM consultations WHERE phone=?", (phone,))
         cursor.execute("DELETE FROM users WHERE phone=?", (phone,))
         conn.commit()
         _socketio().emit("user_deleted", {"phone": phone})
