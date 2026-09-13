@@ -84,7 +84,10 @@ def delete_user(phone):
     cursor = conn.cursor()
     try:
         cursor.execute("SELECT phone FROM users WHERE phone=?", (phone,))
-        if not cursor.fetchone():
+        has_user = cursor.fetchone() is not None
+        cursor.execute("SELECT id FROM consultations WHERE phone=?", (phone,))
+        has_consultation = cursor.fetchone() is not None
+        if not has_user and not has_consultation:
             return jsonify({"error": "User not found"}), 404
         cursor.execute("DELETE FROM messages WHERE phone=?", (phone,))
         cursor.execute("DELETE FROM consultations WHERE phone=?", (phone,))
